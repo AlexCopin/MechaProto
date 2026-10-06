@@ -11,6 +11,10 @@ class UInputComponent;
 class USkeletalMeshComponent;
 class UCameraComponent;
 class UInputAction;
+class UAnimMontage;
+class USpringArmComponent;
+class UC_Slap;
+class UC_Ragdoll;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -31,6 +35,19 @@ class AMechaProtoCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FirstPersonCameraComponent;
 
+	//Third person view on the body while ragdolled
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<USpringArmComponent> RagdollSpringArm;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UCameraComponent> RagdollCamera;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UC_Slap> SlapComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UC_Ragdoll> RagdollComponent;
+
 protected:
 
 	/** Jump Input Action */
@@ -48,6 +65,13 @@ protected:
 	/** Mouse Look Input Action */
 	UPROPERTY(EditAnywhere, Category ="Input")
 	class UInputAction* MouseLookAction;
+
+	UPROPERTY(EditAnywhere, Category ="Input")
+	TObjectPtr<UInputAction> SlapAction;
+
+	//Played on the body mesh, the first person arms copy its pose
+	UPROPERTY(EditAnywhere, Category ="Slap")
+	TObjectPtr<UAnimMontage> SlapMontage;
 	
 public:
 	AMechaProtoCharacter();
@@ -76,6 +100,24 @@ protected:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoJumpEnd();
 
+	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void DoSlap();
+
+	UFUNCTION(BlueprintPure, Category="Ragdoll")
+	bool IsRagdolled() const;
+
+	UFUNCTION()
+	virtual void OnSlapSwing();
+
+	UFUNCTION()
+	virtual void OnRagdollChanged(bool bRagdolled);
+
+	virtual void PostInitializeComponents() override;
+
+	//Body mesh render settings to restore after ragdoll
+	bool bMeshOwnerNoSee = true;
+	EFirstPersonPrimitiveType MeshFirstPersonType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
+
 protected:
 
 	/** Set up input action bindings */
@@ -89,6 +131,9 @@ public:
 
 	/** Returns first person camera component **/
 	UCameraComponent* GetFirstPersonCameraComponent() const { return FirstPersonCameraComponent; }
+
+	UC_Slap* GetSlapComponent() const { return SlapComponent; }
+	UC_Ragdoll* GetRagdollComponent() const { return RagdollComponent; }
 
 };
 

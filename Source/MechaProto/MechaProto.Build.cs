@@ -18,13 +18,19 @@ public class MechaProto : ModuleRules
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
-			"Slate"
+			"Slate",
+			"SlateCore",
+			"EngineSettings"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"MechaProto",
+			"MechaProto/Framework",
+			"MechaProto/Characters",
+			"MechaProto/Interaction",
+			"MechaProto/Online",
 			"MechaProto/Variant_Horror",
 			"MechaProto/Variant_Horror/UI",
 			"MechaProto/Variant_Shooter",

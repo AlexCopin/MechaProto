@@ -7,6 +7,7 @@
 #include "InputMappingContext.h"
 #include "MechaProtoCameraManager.h"
 #include "Blueprint/UserWidget.h"
+#include "MP_MainMenuWidget.h"
 #include "MechaProto.h"
 #include "Widgets/Input/SVirtualJoystick.h"
 
@@ -38,6 +39,29 @@ void AMechaProtoPlayerController::BeginPlay()
 
 		}
 
+	}
+
+	if (IsLocalPlayerController() && GetNetMode() == NM_Standalone && bShowMainMenuInStandalone)
+	{
+		ShowMainMenu();
+	}
+}
+
+void AMechaProtoPlayerController::ShowMainMenu()
+{
+	if (!MainMenuWidgetClass)
+	{
+		return;
+	}
+
+	MainMenuWidget = CreateWidget<UMP_MainMenuWidget>(this, MainMenuWidgetClass);
+	if (MainMenuWidget)
+	{
+		MainMenuWidget->AddToPlayerScreen(10);
+		FInputModeUIOnly InputMode;
+		InputMode.SetWidgetToFocus(MainMenuWidget->TakeWidget());
+		SetInputMode(InputMode);
+		SetShowMouseCursor(true);
 	}
 }
 
