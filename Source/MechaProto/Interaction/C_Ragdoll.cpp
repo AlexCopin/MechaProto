@@ -215,6 +215,13 @@ void UC_Ragdoll::EnterRagdoll()
 	}
 
 	bRagdollApplied = true;
+
+	//Stand up first (slide), the crouch moves the mesh and the ragdoll caches its offset
+	if (Character->bIsCrouched && Character->GetCharacterMovement())
+	{
+		Character->GetCharacterMovement()->bWantsToCrouch = false;
+		Character->GetCharacterMovement()->UnCrouch(true);
+	}
 	MeshRelativeTransform = Mesh->GetRelativeTransform();
 	MeshCollisionProfile = Mesh->GetCollisionProfileName();
 

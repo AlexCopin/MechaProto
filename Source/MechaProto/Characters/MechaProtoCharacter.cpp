@@ -2,6 +2,9 @@
 
 #include "MechaProtoCharacter.h"
 #include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimSequenceBase.h"
+#include "TimerManager.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -12,9 +15,12 @@
 #include "C_Slap.h"
 #include "C_Ragdoll.h"
 #include "C_ProximityVoice.h"
+#include "C_CharacterMovement.h"
+#include "PDA_Movement.h"
 #include "MechaProto.h"
 
 AMechaProtoCharacter::AMechaProtoCharacter()
+	: Super(FObjectInitializer::Get().SetDefaultSubobjectClass<UC_CharacterMovement>(ACharacter::CharacterMovementComponentName))
 {
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(55.f, 96.0f);
@@ -94,6 +100,12 @@ void AMechaProtoCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 		if (SlapAction)
 		{
 			EnhancedInputComponent->BindAction(SlapAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoSlap);
+		}
+
+		if (SlideAction)
+		{
+			EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoSlideStart);
+			EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Completed, this, &AMechaProtoCharacter::DoSlideEnd);
 		}
 	}
 	else
@@ -202,4 +214,161 @@ void AMechaProtoCharacter::OnRagdollChanged(bool bRagdolled)
 		RagdollCamera->Deactivate();
 		FirstPersonCameraComponent->Activate();
 	}
+}
+
+void AMechaProtoCharacter::DoSlideStart()
+{
+	if (UC_CharacterMovement* Movement = GetMechaMovement(); Movement && !IsRagdolled())
+	{
+		Movement->SetWantsToSlide(true);
+	}
+}
+
+void AMechaProtoCharacter::DoSlideEnd()
+{
+	if (UC_CharacterMovement* Movement = GetMechaMovement())
+	{
+		Movement->SetWantsToSlide(false);
+	}
+}
+
+bool AMechaProtoCharacter::IsSliding() const
+{
+	const UC_CharacterMovement* Movement = GetMechaMovement();
+	return Movement && Movement->IsSliding();
+}
+
+bool AMechaProtoCharacter::CanJumpInternal_Implementation() const
+{
+	return IsSliding() ? JumpIsAllowedInternal() : Super::CanJumpInternal_Implementation();
+}
+
+UC_CharacterMovement* AMechaProtoCharacter::GetMechaMovement() const
+{
+	return Cast<UC_CharacterMovement>(GetCharacterMovement());
+}
+
+void AMechaProtoCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	FirstPersonMeshBaseLocation = FirstPersonMesh->GetRelativeLocation();
+}
+
+void AMechaProtoCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	UpdateSlideAnimation();
+
+	if (IsLocallyControlled())
+	{
+		UpdateSlideCamera(DeltaSeconds);
+	}
+}
+
+void AMechaProtoCharacter::UpdateSlideAnimation()
+{
+	const bool bSliding = IsSliding();
+	if (bSliding == bWasSliding)
+	{
+		return;
+	}
+	bWasSliding = bSliding;
+
+	const UC_CharacterMovement* Movement = GetMechaMovement();
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (!Movement || !AnimInstance)
+	{
+		return;
+	}
+	const UPDA_Movement* Data = Movement->GetMovementData();
+	const float Blend = Data->SlideAnimationBlendTime;
+	AnimInstance->SetRootMotionMode(ERootMotionMode::IgnoreRootMotion);
+	GetWorldTimerManager().ClearTimer(SlideLoopTimer);
+	GetWorldTimerManager().ClearTimer(SlideExitTimer);
+
+	if (bSliding)
+	{
+		UAnimSequenceBase* Enter = Data->SlideEnterAnimation;
+		if (!Enter)
+		{
+			PlaySlideLoop();
+			return;
+		}
+		const float StartTime = FMath::Clamp(Data->SlideEnterStartTime, 0.f, Enter->GetPlayLength());
+		AnimInstance->PlaySlotAnimationAsDynamicMontage(Enter, Data->SlideAnimationSlot, Blend, Blend, 1.f, 1, -1.f, StartTime);
+		const float LoopDelay = FMath::Min(Data->SlideEnterDuration, Enter->GetPlayLength() - StartTime - Blend);
+		GetWorldTimerManager().SetTimer(SlideLoopTimer, this, &AMechaProtoCharacter::PlaySlideLoop, FMath::Max(LoopDelay, 0.01f), false);
+		return;
+	}
+
+	//No exit animation in the air, the jump/fall pose takes over
+	UAnimSequenceBase* Exit = nullptr;
+	if (!Movement->IsFalling())
+	{
+		const float Speed = GetVelocity().Size2D();
+		Exit = Speed > Data->SlideExitRunSpeed ? Data->SlideExitRunAnimation : Speed > Data->SlideExitWalkSpeed ? Data->SlideExitWalkAnimation : Data->SlideExitIdleAnimation;
+	}
+	if (Exit)
+	{
+		SlideExitMontage = AnimInstance->PlaySlotAnimationAsDynamicMontage(Exit, Data->SlideAnimationSlot, Blend, Blend);
+		GetWorldTimerManager().SetTimer(SlideExitTimer, this, &AMechaProtoCharacter::StopSlideExit, Data->SlideExitDuration, false);
+	}
+	else
+	{
+		AnimInstance->StopSlotAnimation(Blend, Data->SlideAnimationSlot);
+	}
+}
+
+void AMechaProtoCharacter::StopSlideExit()
+{
+	const UC_CharacterMovement* Movement = GetMechaMovement();
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (!Movement || !AnimInstance || !SlideExitMontage.IsValid())
+	{
+		return;
+	}
+	AnimInstance->Montage_Stop(Movement->GetMovementData()->SlideAnimationBlendTime, SlideExitMontage.Get());
+}
+
+void AMechaProtoCharacter::PlaySlideLoop()
+{
+	const UC_CharacterMovement* Movement = GetMechaMovement();
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (!Movement || !AnimInstance || !IsSliding())
+	{
+		return;
+	}
+
+	const UPDA_Movement* Data = Movement->GetMovementData();
+	if (!Data->SlideLoopAnimation)
+	{
+		return;
+	}
+	const float Blend = Data->SlideAnimationBlendTime;
+	if (UAnimMontage* Montage = AnimInstance->PlaySlotAnimationAsDynamicMontage(Data->SlideLoopAnimation, Data->SlideAnimationSlot, Blend, Blend))
+	{
+		//Loops until the slide ends and something else plays on the slot
+		AnimInstance->Montage_SetNextSection(FName("Default"), FName("Default"), Montage);
+	}
+}
+
+void AMechaProtoCharacter::UpdateSlideCamera(float DeltaSeconds)
+{
+	const UC_CharacterMovement* Movement = GetMechaMovement();
+	if (!Movement)
+	{
+		return;
+	}
+
+	//The body has no slide pose, so the first person arms and camera are moved down instead
+	const UPDA_Movement* Data = Movement->GetMovementData();
+	const float TargetOffset = Movement->IsSliding() ? -Data->SlideCameraDrop : 0.f;
+	if (FMath::IsNearlyEqual(SlideCameraOffset, TargetOffset, 0.1f))
+	{
+		return;
+	}
+	SlideCameraOffset = FMath::FInterpTo(SlideCameraOffset, TargetOffset, DeltaSeconds, Data->SlideCameraInterpSpeed);
+	FirstPersonMesh->SetRelativeLocation(FirstPersonMeshBaseLocation + FVector(0.f, 0.f, SlideCameraOffset));
 }

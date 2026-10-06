@@ -35,6 +35,7 @@ public class MechaProto : ModuleRules
 			"MechaProto/Interaction",
 			"MechaProto/Online",
 			"MechaProto/Voice",
+			"MechaProto/Movement",
 			"MechaProto/Variant_Horror",
 			"MechaProto/Variant_Horror/UI",
 			"MechaProto/Variant_Shooter",

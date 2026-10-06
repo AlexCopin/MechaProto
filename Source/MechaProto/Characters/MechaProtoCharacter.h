@@ -16,6 +16,7 @@ class USpringArmComponent;
 class UC_Slap;
 class UC_Ragdoll;
 class UC_ProximityVoice;
+class UC_CharacterMovement;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -77,6 +78,10 @@ protected:
 	//Played on the body mesh, the first person arms copy its pose
 	UPROPERTY(EditAnywhere, Category ="Slap")
 	TObjectPtr<UAnimMontage> SlapMontage;
+
+	//Hold to slide
+	UPROPERTY(EditAnywhere, Category ="Input")
+	TObjectPtr<UInputAction> SlideAction;
 	
 public:
 	AMechaProtoCharacter();
@@ -108,6 +113,18 @@ protected:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoSlap();
 
+	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void DoSlideStart();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void DoSlideEnd();
+
+	UFUNCTION(BlueprintPure, Category="Movement")
+	bool IsSliding() const;
+
+	//The engine refuses to jump while crouched, the slide is crouched
+	virtual bool CanJumpInternal_Implementation() const override;
+
 	UFUNCTION(BlueprintPure, Category="Ragdoll")
 	bool IsRagdolled() const;
 
@@ -118,6 +135,22 @@ protected:
 	virtual void OnRagdollChanged(bool bRagdolled);
 
 	virtual void PostInitializeComponents() override;
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
+
+	//Lowers the first person view while sliding (owner only)
+	void UpdateSlideCamera(float DeltaSeconds);
+	FVector FirstPersonMeshBaseLocation = FVector::ZeroVector;
+	float SlideCameraOffset = 0.f;
+
+	//Enter / loop / exit animations, every machine follows the replicated slide state
+	void UpdateSlideAnimation();
+	void PlaySlideLoop();
+	void StopSlideExit();
+	bool bWasSliding = false;
+	FTimerHandle SlideLoopTimer;
+	FTimerHandle SlideExitTimer;
+	TWeakObjectPtr<UAnimMontage> SlideExitMontage;
 
 	//Body mesh render settings to restore after ragdoll
 	bool bMeshOwnerNoSee = true;
@@ -140,6 +173,7 @@ public:
 	UC_Slap* GetSlapComponent() const { return SlapComponent; }
 	UC_Ragdoll* GetRagdollComponent() const { return RagdollComponent; }
 	UC_ProximityVoice* GetProximityVoice() const { return ProximityVoice; }
+	UC_CharacterMovement* GetMechaMovement() const;
 
 };
 
