@@ -6,7 +6,7 @@
 
 class UAnimSequenceBase;
 
-//Player movement tuning (slide), read live so it can be edited during PIE
+//Player movement tuning (slide, ladder), read live so it can be edited during PIE
 UCLASS(BlueprintType)
 class MECHAPROTO_API UPDA_Movement : public UPrimaryDataAsset
 {
@@ -94,6 +94,59 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slide|Animation", meta = (ClampMin = "0", UIMax = "1", Units = "s"))
 	float SlideAnimationBlendTime = 0.2f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slide|Animation")
-	FName SlideAnimationSlot = FName("DefaultSlot");
+	//Full body slot of the anim BP used by the slide and ladder animations
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Animation")
+	FName BodyAnimationSlot = FName("DefaultSlot");
+
+	//-----Ladder (forward climbs, back goes down, looking down past LadderLookDownPitch flips it, hold slide to slide down)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "800", Units = "CentimetersPerSecond"))
+	float LadderClimbSpeed = 150.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "2500", Units = "CentimetersPerSecond"))
+	float LadderSlideSpeed = 900.f;
+
+	//Looking down more than this makes forward climb down (to get on from the top)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", ClampMax = "89", Units = "Degrees"))
+	float LadderLookDownPitch = 35.f;
+
+	//Gap between the capsule and the rungs
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "50", Units = "cm"))
+	float LadderStandOff = 8.f;
+
+	//How much the move input must point at the ladder to grab it (dot product)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", ClampMax = "1"))
+	float LadderGrabInputDot = 0.5f;
+
+	//No grab right after leaving a ladder
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "2", Units = "s"))
+	float LadderRegrabDelay = 0.4f;
+
+	//Push onto the platform when reaching the top
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "1000", Units = "CentimetersPerSecond"))
+	float LadderTopExitSpeed = 250.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "1000", Units = "CentimetersPerSecond"))
+	float LadderTopExitUpSpeed = 250.f;
+
+	//Jump away from the ladder
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "1500", Units = "CentimetersPerSecond"))
+	float LadderJumpOffSpeed = 400.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "1500", Units = "CentimetersPerSecond"))
+	float LadderJumpOffUpSpeed = 300.f;
+
+	//-----Ladder animation: one climb loop, played forward going up, backward going down, paused when still
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder|Animation")
+	TObjectPtr<UAnimSequenceBase> LadderClimbAnimation;
+
+	//Climb speed the animation was made for (play rate = vertical speed / this)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder|Animation", meta = (ClampMin = "1", UIMax = "800", Units = "CentimetersPerSecond"))
+	float LadderClimbAnimationSpeed = 38.5f;
+
+	//Optional pose while sliding down, otherwise the climb animation is paused
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder|Animation")
+	TObjectPtr<UAnimSequenceBase> LadderSlideAnimation;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder|Animation", meta = (ClampMin = "0", UIMax = "1", Units = "s"))
+	float LadderAnimationBlendTime = 0.15f;
 };

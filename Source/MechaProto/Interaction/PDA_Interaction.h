@@ -53,4 +53,37 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (ClampMin = "0", UIMax = "3000", EditCondition = "bSlapRagdolledBodies"))
 	float RagdolledBodySlapImpulse = 400.f;
+
+	//-----Interact (stations, items...)
+	//Reach from the eyes
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interact", meta = (ClampMin = "50", UIMax = "600", Units = "cm"))
+	float InteractRange = 250.f;
+
+	//Thickness of the look trace, forgiving aim
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interact", meta = (ClampMin = "0", UIMax = "50", Units = "cm"))
+	float InteractRadius = 15.f;
+
+	//Prints "E: ..." on screen until a widget shows it (OnFocusChanged)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interact")
+	bool bShowDebugPrompt = true;
+
+	//-----Held items
+	//Bone or socket of the body and first person meshes the item is attached to
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Items")
+	FName HoldSocket = FName("hand_r");
+
+	//Released this far in front of the eyes
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Items", meta = (ClampMin = "0", UIMax = "200", Units = "cm"))
+	float DropDistance = 70.f;
+
+	//Speed given to a dropped item along the view, plus the holder's velocity
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Items", meta = (ClampMin = "0", UIMax = "2000", Units = "CentimetersPerSecond"))
+	float DropSpeed = 250.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Items", meta = (ClampMin = "0", UIMax = "1000", Units = "CentimetersPerSecond"))
+	float DropUpSpeed = 100.f;
+
+	//Slapped into a ragdoll: the held item falls
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Items")
+	bool bDropItemWhenRagdolled = true;
 };

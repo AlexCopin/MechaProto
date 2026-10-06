@@ -23,7 +23,8 @@ public class MechaProto : ModuleRules
 			"EngineSettings",
 			"CoreOnline",
 			"OnlineSubsystem",
-			"OnlineSubsystemUtils"
+			"OnlineSubsystemUtils",
+			"Niagara"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
@@ -36,6 +37,9 @@ public class MechaProto : ModuleRules
 			"MechaProto/Online",
 			"MechaProto/Voice",
 			"MechaProto/Movement",
+			"MechaProto/Climb",
+			"MechaProto/Stations",
+			"MechaProto/Items",
 			"MechaProto/Variant_Horror",
 			"MechaProto/Variant_Horror/UI",
 			"MechaProto/Variant_Shooter",

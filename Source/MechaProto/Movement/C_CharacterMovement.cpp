@@ -1,5 +1,6 @@
 #include "C_CharacterMovement.h"
 #include "PDA_Movement.h"
+#include "MP_Ladder.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/Character.h"
 
@@ -73,6 +74,11 @@ bool UC_CharacterMovement::IsSliding() const
 	return IsCustomMovementMode(ECustomMovementMode::Slide);
 }
 
+bool UC_CharacterMovement::IsOnLadder() const
+{
+	return IsCustomMovementMode(ECustomMovementMode::Ladder);
+}
+
 bool UC_CharacterMovement::IsCustomMovementMode(ECustomMovementMode Mode) const
 {
 	return MovementMode == MOVE_Custom && CustomMovementMode == static_cast<uint8>(Mode);
@@ -103,13 +109,21 @@ FNetworkPredictionData_Client* UC_CharacterMovement::GetPredictionData_Client() 
 
 float UC_CharacterMovement::GetMaxSpeed() const
 {
-	return IsSliding() ? GetMovementData()->SlideMaxSpeed : Super::GetMaxSpeed();
+	if (IsSliding())
+	{
+		return GetMovementData()->SlideMaxSpeed;
+	}
+	if (IsOnLadder())
+	{
+		return FMath::Max(GetMovementData()->LadderClimbSpeed, GetMovementData()->LadderSlideSpeed);
+	}
+	return Super::GetMaxSpeed();
 }
 
 float UC_CharacterMovement::GetMaxBrakingDeceleration() const
 {
-	//Slide speed loss is handled by SlideFriction
-	return IsSliding() ? 0.f : Super::GetMaxBrakingDeceleration();
+	//Slide speed loss is handled by SlideFriction, the ladder sets its speed directly
+	return IsSliding() || IsOnLadder() ? 0.f : Super::GetMaxBrakingDeceleration();
 }
 
 bool UC_CharacterMovement::CanAttemptJump() const
@@ -119,7 +133,24 @@ bool UC_CharacterMovement::CanAttemptJump() const
 	{
 		return IsJumpAllowed() && GetMovementData()->bCanJumpOutOfSlide;
 	}
+	if (IsOnLadder())
+	{
+		return IsJumpAllowed();
+	}
 	return Super::CanAttemptJump();
+}
+
+bool UC_CharacterMovement::DoJump(bool bReplayingMoves, float DeltaTime)
+{
+	//Jumping off a ladder pushes away from it instead of straight up
+	if (IsOnLadder() && CharacterOwner && CharacterOwner->CanJump())
+	{
+		const UPDA_Movement* Data = GetMovementData();
+		const FVector Normal = CurrentLadder.IsValid() ? CurrentLadder->GetClimbNormal() : -UpdatedComponent->GetForwardVector();
+		LeaveLadder(Normal * Data->LadderJumpOffSpeed + FVector::UpVector * Data->LadderJumpOffUpSpeed);
+		return true;
+	}
+	return Super::DoJump(bReplayingMoves, DeltaTime);
 }
 
 bool UC_CharacterMovement::CanCrouchInCurrentState() const
@@ -136,6 +167,17 @@ void UC_CharacterMovement::UpdateFromCompressedFlags(uint8 Flags)
 
 void UC_CharacterMovement::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
+	TimeSinceLadderLeft += DeltaSeconds;
+	if (!IsOnLadder() && (MovementMode == MOVE_Walking || MovementMode == MOVE_Falling || IsSliding()))
+	{
+		AMP_Ladder* Ladder = FindOverlappingLadder();
+		if (Ladder && CanGrabLadder(Ladder))
+		{
+			GrabLadder(Ladder);
+		}
+	}
+
+	//On a ladder the slide input slides down instead, see PhysLadder
 	if (bWantsToSlide && MovementMode == MOVE_Walking && CanStartSlide())
 	{
 		EnterSlide();
@@ -163,6 +205,22 @@ void UC_CharacterMovement::OnMovementModeChanged(EMovementMode PreviousMovementM
 	{
 		bWantsToCrouch = false;
 	}
+
+	//The body faces the ladder while the camera looks freely, back to the class setting after
+	if (CharacterOwner)
+	{
+		const bool bWasOnLadder = PreviousMovementMode == MOVE_Custom && PreviousCustomMode == static_cast<uint8>(ECustomMovementMode::Ladder);
+		if (IsOnLadder())
+		{
+			CharacterOwner->bUseControllerRotationYaw = false;
+		}
+		else if (bWasOnLadder)
+		{
+			CharacterOwner->bUseControllerRotationYaw = GetDefault<ACharacter>(CharacterOwner->GetClass())->bUseControllerRotationYaw;
+			CurrentLadder.Reset();
+			TimeSinceLadderLeft = 0.f;
+		}
+	}
 }
 
 void UC_CharacterMovement::PhysCustom(float DeltaTime, int32 Iterations)
@@ -172,6 +230,10 @@ void UC_CharacterMovement::PhysCustom(float DeltaTime, int32 Iterations)
 	if (CustomMovementMode == static_cast<uint8>(ECustomMovementMode::Slide))
 	{
 		PhysSlide(DeltaTime, Iterations);
+	}
+	else if (CustomMovementMode == static_cast<uint8>(ECustomMovementMode::Ladder))
+	{
+		PhysLadder(DeltaTime, Iterations);
 	}
 }
 
@@ -253,3 +315,133 @@ void UC_CharacterMovement::PhysSlide(float DeltaTime, int32 Iterations)
 		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
 	}
 }
+
+//-----Ladder
+
+AMP_Ladder* UC_CharacterMovement::FindOverlappingLadder() const
+{
+	if (!CharacterOwner)
+	{
+		return nullptr;
+	}
+	TArray<AActor*> Ladders;
+	CharacterOwner->GetCapsuleComponent()->GetOverlappingActors(Ladders, AMP_Ladder::StaticClass());
+	return Ladders.Num() > 0 ? Cast<AMP_Ladder>(Ladders[0]) : nullptr;
+}
+
+bool UC_CharacterMovement::CanGrabLadder(const AMP_Ladder* Ladder) const
+{
+	const UPDA_Movement* Data = GetMovementData();
+	const FVector InputDirection = Acceleration.GetSafeNormal2D();
+	if (TimeSinceLadderLeft < Data->LadderRegrabDelay || InputDirection.IsNearlyZero())
+	{
+		return false;
+	}
+
+	const FVector Normal = Ladder->GetClimbNormal();
+	const float FeetZ = UpdatedComponent->GetComponentLocation().Z - CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const bool bBelowTop = FeetZ < Ladder->GetTopZ() - 20.f;
+	//From the front: walk into the rungs. From the top platform: walk toward the climb side
+	const FVector GrabDirection = bBelowTop ? -Normal : Normal;
+	return FVector::DotProduct(InputDirection, GrabDirection) > Data->LadderGrabInputDot;
+}
+
+void UC_CharacterMovement::GrabLadder(AMP_Ladder* Ladder)
+{
+	CurrentLadder = Ladder;
+	bWantsToCrouch = false;
+	Velocity = FVector::ZeroVector;
+	SetMovementMode(MOVE_Custom, static_cast<uint8>(ECustomMovementMode::Ladder));
+}
+
+void UC_CharacterMovement::LeaveLadder(const FVector& NewVelocity)
+{
+	Velocity = NewVelocity;
+	SetMovementMode(MOVE_Falling);
+}
+
+void UC_CharacterMovement::PhysLadder(float DeltaTime, int32 Iterations)
+{
+	if (DeltaTime < MIN_TICK_TIME)
+	{
+		return;
+	}
+
+	AMP_Ladder* Ladder = CurrentLadder.IsValid() ? CurrentLadder.Get() : FindOverlappingLadder();
+	if (!Ladder)
+	{
+		LeaveLadder(FVector::ZeroVector);
+		StartNewPhysics(DeltaTime, Iterations);
+		return;
+	}
+	CurrentLadder = Ladder;
+
+	const UPDA_Movement* Data = GetMovementData();
+	const FVector Normal = Ladder->GetClimbNormal();
+	const float HalfHeight = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const float Radius = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius();
+
+	//Forward climbs, looking down flips it (to get on from the top), slide input slides down
+	float VerticalSpeed = 0.f;
+	if (bWantsToSlide)
+	{
+		VerticalSpeed = -Data->LadderSlideSpeed;
+	}
+	else
+	{
+		const float InputScale = FMath::Max(GetMaxAcceleration(), UE_KINDA_SMALL_NUMBER);
+		const float ForwardInput = FMath::Clamp(FVector::DotProduct(Acceleration / InputScale, -Normal), -1.f, 1.f);
+		const float LookPitch = CharacterOwner->GetControlRotation().GetNormalized().Pitch;
+		const float Direction = LookPitch < -Data->LadderLookDownPitch ? -1.f : 1.f;
+		VerticalSpeed = ForwardInput * Direction * Data->LadderClimbSpeed;
+	}
+
+	const FVector OldLocation = UpdatedComponent->GetComponentLocation();
+	const float FeetZ = OldLocation.Z - HalfHeight;
+
+	//Top: step onto the platform
+	if (VerticalSpeed > 0.f && FeetZ >= Ladder->GetTopZ() + 5.f)
+	{
+		LeaveLadder(-Normal * Data->LadderTopExitSpeed + FVector::UpVector * Data->LadderTopExitUpSpeed);
+		StartNewPhysics(DeltaTime, Iterations);
+		return;
+	}
+
+	//Bottom: back on the ground
+	if (VerticalSpeed < 0.f)
+	{
+		FindFloor(OldLocation, CurrentFloor, false);
+		const bool bOnFloor = CurrentFloor.IsWalkableFloor() && CurrentFloor.FloorDist < 5.f;
+		if (bOnFloor || FeetZ <= Ladder->GetBottomZ() + 2.f)
+		{
+			Velocity = FVector::ZeroVector;
+			SetMovementMode(CurrentFloor.IsWalkableFloor() ? MOVE_Walking : MOVE_Falling);
+			StartNewPhysics(DeltaTime, Iterations);
+			return;
+		}
+	}
+
+	Iterations++;
+	bJustTeleported = false;
+
+	//Pulled onto the climb line in front of the rungs, facing the ladder
+	const FVector ClimbLocation = Ladder->GetClimbLocation(OldLocation.Z, Radius + Data->LadderStandOff);
+	FVector Snap = ClimbLocation - OldLocation;
+	Snap.Z = 0.f;
+	const FVector Delta = FVector::UpVector * VerticalSpeed * DeltaTime + Snap * FMath::Min(DeltaTime * 15.f, 1.f);
+	const FQuat FacingLadder = FRotator(0.f, (-Normal).Rotation().Yaw, 0.f).Quaternion();
+	const FQuat NewRotation = FQuat::Slerp(UpdatedComponent->GetComponentQuat(), FacingLadder, FMath::Min(DeltaTime * 12.f, 1.f));
+
+	FHitResult Hit(1.f);
+	SafeMoveUpdatedComponent(Delta, NewRotation, true, Hit);
+	if (Hit.Time < 1.f)
+	{
+		SlideAlongSurface(Delta, 1.f - Hit.Time, Hit.Normal, Hit, true);
+	}
+
+	if (!bJustTeleported)
+	{
+		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
+	}
+}
+

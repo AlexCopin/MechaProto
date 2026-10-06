@@ -16,6 +16,11 @@
 #include "C_Ragdoll.h"
 #include "C_ProximityVoice.h"
 #include "C_CharacterMovement.h"
+#include "C_Interactor.h"
+#include "C_StationUser.h"
+#include "C_ItemHolder.h"
+#include "PDA_Interaction.h"
+#include "MP_WeaponStation.h"
 #include "PDA_Movement.h"
 #include "MechaProto.h"
 
@@ -69,6 +74,10 @@ AMechaProtoCharacter::AMechaProtoCharacter()
 	SlapComponent = CreateDefaultSubobject<UC_Slap>(TEXT("Slap"));
 	RagdollComponent = CreateDefaultSubobject<UC_Ragdoll>(TEXT("Ragdoll"));
 
+	Interactor = CreateDefaultSubobject<UC_Interactor>(TEXT("Interactor"));
+	StationUser = CreateDefaultSubobject<UC_StationUser>(TEXT("Station User"));
+	ItemHolder = CreateDefaultSubobject<UC_ItemHolder>(TEXT("Item Holder"));
+
 	ProximityVoice = CreateDefaultSubobject<UC_ProximityVoice>(TEXT("Proximity Voice"));
 	ProximityVoice->SetupAttachment(GetMesh(), FName("head"));
 }
@@ -100,6 +109,27 @@ void AMechaProtoCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 		if (SlapAction)
 		{
 			EnhancedInputComponent->BindAction(SlapAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoSlap);
+		}
+
+		if (InteractAction)
+		{
+			EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoInteract);
+		}
+
+		if (DropItemAction)
+		{
+			EnhancedInputComponent->BindAction(DropItemAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoDropItem);
+		}
+
+		if (UseItemAction)
+		{
+			EnhancedInputComponent->BindAction(UseItemAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoUseItem);
+		}
+
+		if (StationFireAction)
+		{
+			EnhancedInputComponent->BindAction(StationFireAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoStationFireStart);
+			EnhancedInputComponent->BindAction(StationFireAction, ETriggerEvent::Completed, this, &AMechaProtoCharacter::DoStationFireEnd);
 		}
 
 		if (SlideAction)
@@ -147,7 +177,7 @@ void AMechaProtoCharacter::DoAim(float Yaw, float Pitch)
 
 void AMechaProtoCharacter::DoMove(float Right, float Forward)
 {
-	if (GetController() && !IsRagdolled())
+	if (GetController() && !IsRagdolled() && !IsManningStation())
 	{
 		// pass the move inputs
 		AddMovementInput(GetActorRightVector(), Right);
@@ -157,7 +187,7 @@ void AMechaProtoCharacter::DoMove(float Right, float Forward)
 
 void AMechaProtoCharacter::DoJumpStart()
 {
-	if (IsRagdolled())
+	if (IsRagdolled() || IsManningStation())
 	{
 		return;
 	}
@@ -174,7 +204,55 @@ void AMechaProtoCharacter::DoJumpEnd()
 
 void AMechaProtoCharacter::DoSlap()
 {
-	SlapComponent->TrySlap();
+	if (!IsManningStation())
+	{
+		SlapComponent->TrySlap();
+	}
+}
+
+void AMechaProtoCharacter::DoInteract()
+{
+	//Interact again to leave the station, it is behind the camera
+	if (IsManningStation())
+	{
+		Interactor->InteractWith(StationUser->GetStation());
+		return;
+	}
+	if (!IsRagdolled())
+	{
+		Interactor->TryInteract();
+	}
+}
+
+void AMechaProtoCharacter::DoDropItem()
+{
+	if (!IsRagdolled())
+	{
+		ItemHolder->RequestDrop();
+	}
+}
+
+void AMechaProtoCharacter::DoUseItem()
+{
+	if (!IsRagdolled() && !IsManningStation())
+	{
+		ItemHolder->RequestUse();
+	}
+}
+
+void AMechaProtoCharacter::DoStationFireStart()
+{
+	StationUser->SetFiring(true);
+}
+
+void AMechaProtoCharacter::DoStationFireEnd()
+{
+	StationUser->SetFiring(false);
+}
+
+bool AMechaProtoCharacter::IsManningStation() const
+{
+	return StationUser && StationUser->IsManning();
 }
 
 bool AMechaProtoCharacter::IsRagdolled() const
@@ -194,6 +272,16 @@ void AMechaProtoCharacter::OnSlapSwing()
 
 void AMechaProtoCharacter::OnRagdollChanged(bool bRagdolled)
 {
+	//Knocked off the station, the held item falls
+	if (bRagdolled && HasAuthority())
+	{
+		StationUser->LeaveStation();
+		if (ItemHolder->GetInteractionData()->bDropItemWhenRagdolled)
+		{
+			ItemHolder->Drop();
+		}
+	}
+
 	USkeletalMeshComponent* BodyMesh = GetMesh();
 	if (bRagdolled)
 	{
@@ -218,7 +306,7 @@ void AMechaProtoCharacter::OnRagdollChanged(bool bRagdolled)
 
 void AMechaProtoCharacter::DoSlideStart()
 {
-	if (UC_CharacterMovement* Movement = GetMechaMovement(); Movement && !IsRagdolled())
+	if (UC_CharacterMovement* Movement = GetMechaMovement(); Movement && !IsRagdolled() && !IsManningStation())
 	{
 		Movement->SetWantsToSlide(true);
 	}
@@ -238,9 +326,15 @@ bool AMechaProtoCharacter::IsSliding() const
 	return Movement && Movement->IsSliding();
 }
 
+bool AMechaProtoCharacter::IsOnLadder() const
+{
+	const UC_CharacterMovement* Movement = GetMechaMovement();
+	return Movement && Movement->IsOnLadder();
+}
+
 bool AMechaProtoCharacter::CanJumpInternal_Implementation() const
 {
-	return IsSliding() ? JumpIsAllowedInternal() : Super::CanJumpInternal_Implementation();
+	return IsSliding() || IsOnLadder() ? JumpIsAllowedInternal() : Super::CanJumpInternal_Implementation();
 }
 
 UC_CharacterMovement* AMechaProtoCharacter::GetMechaMovement() const
@@ -260,6 +354,7 @@ void AMechaProtoCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	UpdateSlideAnimation();
+	UpdateLadderAnimation();
 
 	if (IsLocallyControlled())
 	{
@@ -297,7 +392,7 @@ void AMechaProtoCharacter::UpdateSlideAnimation()
 			return;
 		}
 		const float StartTime = FMath::Clamp(Data->SlideEnterStartTime, 0.f, Enter->GetPlayLength());
-		AnimInstance->PlaySlotAnimationAsDynamicMontage(Enter, Data->SlideAnimationSlot, Blend, Blend, 1.f, 1, -1.f, StartTime);
+		AnimInstance->PlaySlotAnimationAsDynamicMontage(Enter, Data->BodyAnimationSlot, Blend, Blend, 1.f, 1, -1.f, StartTime);
 		const float LoopDelay = FMath::Min(Data->SlideEnterDuration, Enter->GetPlayLength() - StartTime - Blend);
 		GetWorldTimerManager().SetTimer(SlideLoopTimer, this, &AMechaProtoCharacter::PlaySlideLoop, FMath::Max(LoopDelay, 0.01f), false);
 		return;
@@ -312,12 +407,12 @@ void AMechaProtoCharacter::UpdateSlideAnimation()
 	}
 	if (Exit)
 	{
-		SlideExitMontage = AnimInstance->PlaySlotAnimationAsDynamicMontage(Exit, Data->SlideAnimationSlot, Blend, Blend);
+		SlideExitMontage = AnimInstance->PlaySlotAnimationAsDynamicMontage(Exit, Data->BodyAnimationSlot, Blend, Blend);
 		GetWorldTimerManager().SetTimer(SlideExitTimer, this, &AMechaProtoCharacter::StopSlideExit, Data->SlideExitDuration, false);
 	}
 	else
 	{
-		AnimInstance->StopSlotAnimation(Blend, Data->SlideAnimationSlot);
+		AnimInstance->StopSlotAnimation(Blend, Data->BodyAnimationSlot);
 	}
 }
 
@@ -347,7 +442,7 @@ void AMechaProtoCharacter::PlaySlideLoop()
 		return;
 	}
 	const float Blend = Data->SlideAnimationBlendTime;
-	if (UAnimMontage* Montage = AnimInstance->PlaySlotAnimationAsDynamicMontage(Data->SlideLoopAnimation, Data->SlideAnimationSlot, Blend, Blend))
+	if (UAnimMontage* Montage = AnimInstance->PlaySlotAnimationAsDynamicMontage(Data->SlideLoopAnimation, Data->BodyAnimationSlot, Blend, Blend))
 	{
 		//Loops until the slide ends and something else plays on the slot
 		AnimInstance->Montage_SetNextSection(FName("Default"), FName("Default"), Montage);
@@ -372,3 +467,67 @@ void AMechaProtoCharacter::UpdateSlideCamera(float DeltaSeconds)
 	SlideCameraOffset = FMath::FInterpTo(SlideCameraOffset, TargetOffset, DeltaSeconds, Data->SlideCameraInterpSpeed);
 	FirstPersonMesh->SetRelativeLocation(FirstPersonMeshBaseLocation + FVector(0.f, 0.f, SlideCameraOffset));
 }
+
+void AMechaProtoCharacter::UpdateLadderAnimation()
+{
+	const UC_CharacterMovement* Movement = GetMechaMovement();
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (!Movement || !AnimInstance)
+	{
+		return;
+	}
+	const UPDA_Movement* Data = Movement->GetMovementData();
+	const float Blend = Data->LadderAnimationBlendTime;
+
+	const bool bOnLadder = Movement->IsOnLadder();
+	if (!bOnLadder)
+	{
+		if (bWasOnLadder && LadderMontage.IsValid())
+		{
+			AnimInstance->Montage_Stop(Blend, LadderMontage.Get());
+		}
+		bWasOnLadder = false;
+		LadderMontage.Reset();
+		return;
+	}
+	bWasOnLadder = true;
+
+	//Velocity is replicated, so simulated proxies animate the same way
+	const float VerticalSpeed = GetVelocity().Z;
+	const bool bSlidingDown = VerticalSpeed < -0.5f * (Data->LadderClimbSpeed + Data->LadderSlideSpeed);
+	UAnimSequenceBase* Wanted = bSlidingDown && Data->LadderSlideAnimation ? Data->LadderSlideAnimation.Get() : Data->LadderClimbAnimation.Get();
+	if (!Wanted)
+	{
+		return;
+	}
+
+	//Start or switch the loop (also restarts it if something else played on the slot)
+	if (!LadderMontage.IsValid() || LadderMontageAnimation.Get() != Wanted || !AnimInstance->Montage_IsPlaying(LadderMontage.Get()))
+	{
+		UAnimMontage* Montage = AnimInstance->PlaySlotAnimationAsDynamicMontage(Wanted, Data->BodyAnimationSlot, Blend, Blend);
+		if (!Montage)
+		{
+			return;
+		}
+		AnimInstance->Montage_SetNextSection(FName("Default"), FName("Default"), Montage);
+		LadderMontage = Montage;
+		LadderMontageAnimation = Wanted;
+	}
+
+	//The climb follows the speed: forward going up, backward going down, paused when still or sliding without a slide pose
+	float PlayRate = 1.f;
+	if (Wanted == Data->LadderClimbAnimation)
+	{
+		PlayRate = bSlidingDown ? 0.f : VerticalSpeed / Data->LadderClimbAnimationSpeed;
+	}
+	UAnimMontage* Montage = LadderMontage.Get();
+	AnimInstance->Montage_SetPlayRate(Montage, PlayRate);
+
+	//Section loops only wrap forward, wrap by hand when playing backward
+	const float Length = Wanted->GetPlayLength();
+	if (PlayRate < 0.f && AnimInstance->Montage_GetPosition(Montage) <= 0.02f)
+	{
+		AnimInstance->Montage_SetPosition(Montage, FMath::Max(Length - 0.02f, 0.f));
+	}
+}
+

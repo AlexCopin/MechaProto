@@ -4,6 +4,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "C_CharacterMovement.generated.h"
 
+class AMP_Ladder;
 class UPDA_Movement;
 
 UENUM(BlueprintType)
@@ -11,9 +12,10 @@ enum class ECustomMovementMode : uint8
 {
 	None UMETA(Hidden),
 	Slide,
+	Ladder,
 };
 
-//Character movement with a predicted slide (custom movement mode, input sent in the saved moves)
+//Character movement with a predicted slide and ladder (custom movement modes, input sent in the saved moves)
 UCLASS()
 class MECHAPROTO_API UC_CharacterMovement : public UCharacterMovementComponent
 {
@@ -51,6 +53,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Slide")
 	bool IsSliding() const;
 
+	UFUNCTION(BlueprintPure, Category = "Ladder")
+	bool IsOnLadder() const;
+
+	//Only valid on the server and the owning client (simulated proxies follow the replicated mode)
+	UFUNCTION(BlueprintPure, Category = "Ladder")
+	AMP_Ladder* GetCurrentLadder() const { return CurrentLadder.Get(); }
+
 	UFUNCTION(BlueprintPure, Category = "Movement")
 	bool IsCustomMovementMode(ECustomMovementMode Mode) const;
 
@@ -62,6 +71,7 @@ public:
 	virtual float GetMaxBrakingDeceleration() const override;
 	virtual bool CanAttemptJump() const override;
 	virtual bool CanCrouchInCurrentState() const override;
+	virtual bool DoJump(bool bReplayingMoves, float DeltaTime) override;
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
@@ -75,6 +85,16 @@ protected:
 	bool CanStartSlide() const;
 	void EnterSlide();
 	void PhysSlide(float DeltaTime, int32 Iterations);
+
+	AMP_Ladder* FindOverlappingLadder() const;
+	bool CanGrabLadder(const AMP_Ladder* Ladder) const;
+	void GrabLadder(AMP_Ladder* Ladder);
+	void LeaveLadder(const FVector& NewVelocity);
+	void PhysLadder(float DeltaTime, int32 Iterations);
+
+	TWeakObjectPtr<AMP_Ladder> CurrentLadder;
+	//Counted in move time so replays agree
+	float TimeSinceLadderLeft = 100.f;
 
 	//Input state, replayed by the saved moves
 	bool bWantsToSlide = false;

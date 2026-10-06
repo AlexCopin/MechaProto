@@ -17,6 +17,9 @@ class UC_Slap;
 class UC_Ragdoll;
 class UC_ProximityVoice;
 class UC_CharacterMovement;
+class UC_Interactor;
+class UC_StationUser;
+class UC_ItemHolder;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -50,6 +53,15 @@ class AMechaProtoCharacter : public ACharacter
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UC_Ragdoll> RagdollComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UC_Interactor> Interactor;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UC_StationUser> StationUser;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UC_ItemHolder> ItemHolder;
+
 	//This player's voice comes from the head, it follows the body when ragdolled
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UC_ProximityVoice> ProximityVoice;
@@ -82,6 +94,19 @@ protected:
 	//Hold to slide
 	UPROPERTY(EditAnywhere, Category ="Input")
 	TObjectPtr<UInputAction> SlideAction;
+
+	UPROPERTY(EditAnywhere, Category ="Input")
+	TObjectPtr<UInputAction> InteractAction;
+
+	//Mapped in the station context, only active while manning
+	UPROPERTY(EditAnywhere, Category ="Input")
+	TObjectPtr<UInputAction> StationFireAction;
+
+	UPROPERTY(EditAnywhere, Category ="Input")
+	TObjectPtr<UInputAction> DropItemAction;
+
+	UPROPERTY(EditAnywhere, Category ="Input")
+	TObjectPtr<UInputAction> UseItemAction;
 	
 public:
 	AMechaProtoCharacter();
@@ -114,6 +139,25 @@ protected:
 	virtual void DoSlap();
 
 	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void DoInteract();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void DoDropItem();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void DoUseItem();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void DoStationFireStart();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void DoStationFireEnd();
+
+	//Movement, slide and slap are locked while manning a station
+	UFUNCTION(BlueprintPure, Category="Station")
+	bool IsManningStation() const;
+
+	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoSlideStart();
 
 	UFUNCTION(BlueprintCallable, Category="Input")
@@ -122,7 +166,10 @@ protected:
 	UFUNCTION(BlueprintPure, Category="Movement")
 	bool IsSliding() const;
 
-	//The engine refuses to jump while crouched, the slide is crouched
+	UFUNCTION(BlueprintPure, Category="Movement")
+	bool IsOnLadder() const;
+
+	//The engine refuses to jump while crouched (slide) and off a ladder
 	virtual bool CanJumpInternal_Implementation() const override;
 
 	UFUNCTION(BlueprintPure, Category="Ragdoll")
@@ -152,6 +199,12 @@ protected:
 	FTimerHandle SlideExitTimer;
 	TWeakObjectPtr<UAnimMontage> SlideExitMontage;
 
+	//Climb loop played at a rate following the vertical speed, every machine
+	void UpdateLadderAnimation();
+	bool bWasOnLadder = false;
+	TWeakObjectPtr<UAnimMontage> LadderMontage;
+	TWeakObjectPtr<UAnimSequenceBase> LadderMontageAnimation;
+
 	//Body mesh render settings to restore after ragdoll
 	bool bMeshOwnerNoSee = true;
 	EFirstPersonPrimitiveType MeshFirstPersonType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
@@ -174,6 +227,9 @@ public:
 	UC_Ragdoll* GetRagdollComponent() const { return RagdollComponent; }
 	UC_ProximityVoice* GetProximityVoice() const { return ProximityVoice; }
 	UC_CharacterMovement* GetMechaMovement() const;
+	UC_Interactor* GetInteractor() const { return Interactor; }
+	UC_StationUser* GetStationUser() const { return StationUser; }
+	UC_ItemHolder* GetItemHolder() const { return ItemHolder; }
 
 };
 
