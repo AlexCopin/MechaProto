@@ -32,6 +32,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Network")
 	FString GetLastJoinAddress() const { return LastJoinAddress; }
 
+	//The online subsystem only processes voice while a session exists, joining by IP never creates one
+	void EnsureVoiceSession();
+
 	UPROPERTY(BlueprintAssignable, Category = "Network")
 	FOnNetworkError OnNetworkError;
 

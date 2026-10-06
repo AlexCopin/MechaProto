@@ -15,6 +15,7 @@ class UAnimMontage;
 class USpringArmComponent;
 class UC_Slap;
 class UC_Ragdoll;
+class UC_ProximityVoice;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -47,6 +48,10 @@ class AMechaProtoCharacter : public ACharacter
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UC_Ragdoll> RagdollComponent;
+
+	//This player's voice comes from the head, it follows the body when ragdolled
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UC_ProximityVoice> ProximityVoice;
 
 protected:
 
@@ -134,6 +139,7 @@ public:
 
 	UC_Slap* GetSlapComponent() const { return SlapComponent; }
 	UC_Ragdoll* GetRagdollComponent() const { return RagdollComponent; }
+	UC_ProximityVoice* GetProximityVoice() const { return ProximityVoice; }
 
 };
 

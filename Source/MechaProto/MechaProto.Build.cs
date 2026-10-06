@@ -20,7 +20,10 @@ public class MechaProto : ModuleRules
 			"UMG",
 			"Slate",
 			"SlateCore",
-			"EngineSettings"
+			"EngineSettings",
+			"CoreOnline",
+			"OnlineSubsystem",
+			"OnlineSubsystemUtils"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
@@ -31,6 +34,7 @@ public class MechaProto : ModuleRules
 			"MechaProto/Characters",
 			"MechaProto/Interaction",
 			"MechaProto/Online",
+			"MechaProto/Voice",
 			"MechaProto/Variant_Horror",
 			"MechaProto/Variant_Horror/UI",
 			"MechaProto/Variant_Shooter",

@@ -11,6 +11,7 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "C_Slap.h"
 #include "C_Ragdoll.h"
+#include "C_ProximityVoice.h"
 #include "MechaProto.h"
 
 AMechaProtoCharacter::AMechaProtoCharacter()
@@ -61,6 +62,9 @@ AMechaProtoCharacter::AMechaProtoCharacter()
 
 	SlapComponent = CreateDefaultSubobject<UC_Slap>(TEXT("Slap"));
 	RagdollComponent = CreateDefaultSubobject<UC_Ragdoll>(TEXT("Ragdoll"));
+
+	ProximityVoice = CreateDefaultSubobject<UC_ProximityVoice>(TEXT("Proximity Voice"));
+	ProximityVoice->SetupAttachment(GetMesh(), FName("head"));
 }
 
 void AMechaProtoCharacter::PostInitializeComponents()

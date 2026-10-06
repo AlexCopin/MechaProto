@@ -4,11 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "Online/CoreOnline.h"
 #include "MechaProtoPlayerController.generated.h"
 
+class UInputAction;
 class UInputMappingContext;
 class UUserWidget;
 class UMP_MainMenuWidget;
+class UPDA_Voice;
 
 /**
  *  Simple first person Player Controller
@@ -58,6 +61,35 @@ protected:
 	TObjectPtr<UMP_MainMenuWidget> MainMenuWidget;
 
 	void ShowMainMenu();
+
+	//-----Voice
+	UPROPERTY(EditAnywhere, Category="Voice")
+	TObjectPtr<UPDA_Voice> VoiceData;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> PushToTalkAction;
+
+	//Sent by the server on login, the voice mode then comes from VoiceData
+	virtual void ClientEnableNetworkVoice_Implementation(bool bEnable) override;
+
+	const UPDA_Voice* GetVoiceData() const;
+	void OnPushToTalkStarted();
+	void OnPushToTalkCompleted();
+	void ApplyVoiceMode();
+	//Follows bPushToTalk edits during PIE, debug display
+	void RefreshVoiceMode();
+	void ShowMicDebug();
+	//IsLocalPlayerTalking is broken for user 0 in the engine, the talking event is used instead
+	void OnTalkingStateChanged(FUniqueNetIdRef TalkerId, bool bIsTalking);
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	bool bPushToTalkHeld = false;
+	bool bAppliedPushToTalk = false;
+	bool bLocalTalking = false;
+	float AppliedMicThreshold = -1.f;
+	FTimerHandle VoiceModeTimer;
+	FDelegateHandle TalkingStateHandle;
 
 	/** Gameplay initialization */
 	virtual void BeginPlay() override;
