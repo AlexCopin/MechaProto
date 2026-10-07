@@ -21,6 +21,7 @@
 #include "C_ItemHolder.h"
 #include "PDA_Interaction.h"
 #include "MP_WeaponStation.h"
+#include "MP_Ladder.h"
 #include "PDA_Movement.h"
 #include "MechaProto.h"
 
@@ -53,6 +54,8 @@ AMechaProtoCharacter::AMechaProtoCharacter()
 	GetMesh()->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
 
 	GetCapsuleComponent()->SetCapsuleSize(34.0f, 96.0f);
+	//Weapons are for enemies, projectiles fly through players
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Projectile, ECR_Ignore);
 
 	// Configure character movement
 	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
@@ -179,9 +182,10 @@ void AMechaProtoCharacter::DoMove(float Right, float Forward)
 {
 	if (GetController() && !IsRagdolled() && !IsManningStation())
 	{
-		// pass the move inputs
-		AddMovementInput(GetActorRightVector(), Right);
-		AddMovementInput(GetActorForwardVector(), Forward);
+		//Relative to the view: on a ladder the body faces the rungs while the camera looks freely
+		const FRotator ViewYaw(0.f, GetControlRotation().Yaw, 0.f);
+		AddMovementInput(FRotationMatrix(ViewYaw).GetUnitAxis(EAxis::Y), Right);
+		AddMovementInput(ViewYaw.Vector(), Forward);
 	}
 }
 
@@ -290,6 +294,8 @@ void AMechaProtoCharacter::OnRagdollChanged(bool bRagdolled)
 		MeshFirstPersonType = BodyMesh->FirstPersonPrimitiveType;
 		BodyMesh->SetFirstPersonPrimitiveType(EFirstPersonPrimitiveType::None);
 		BodyMesh->SetOwnerNoSee(false);
+		//The ragdoll profile blocks projectiles, a player body on the floor still isn't a target
+		BodyMesh->SetCollisionResponseToChannel(ECC_Projectile, ECR_Ignore);
 		FirstPersonMesh->SetVisibility(false, true);
 		FirstPersonCameraComponent->Deactivate();
 		RagdollCamera->Activate();
@@ -359,6 +365,7 @@ void AMechaProtoCharacter::Tick(float DeltaSeconds)
 	if (IsLocallyControlled())
 	{
 		UpdateSlideCamera(DeltaSeconds);
+		UpdateLadderCamera(DeltaSeconds);
 	}
 }
 
@@ -466,6 +473,47 @@ void AMechaProtoCharacter::UpdateSlideCamera(float DeltaSeconds)
 	}
 	SlideCameraOffset = FMath::FInterpTo(SlideCameraOffset, TargetOffset, DeltaSeconds, Data->SlideCameraInterpSpeed);
 	FirstPersonMesh->SetRelativeLocation(FirstPersonMeshBaseLocation + FVector(0.f, 0.f, SlideCameraOffset));
+}
+
+void AMechaProtoCharacter::UpdateLadderCamera(float DeltaSeconds)
+{
+	const UC_CharacterMovement* Movement = GetMechaMovement();
+	AController* PlayerController = GetController();
+	if (!Movement || !PlayerController)
+	{
+		return;
+	}
+	const UPDA_Movement* Data = Movement->GetMovementData();
+
+	const bool bOnLadder = Movement->IsOnLadder();
+	const bool bGrabbed = bOnLadder && !bLadderCameraWasOnLadder;
+	bLadderCameraWasOnLadder = bOnLadder;
+	if (bGrabbed && Movement->GetCurrentLadder() && Data->LadderCameraBlendTime > 0.f)
+	{
+		LadderCameraStart = PlayerController->GetControlRotation();
+		LadderCameraLast = LadderCameraStart;
+		LadderCameraTarget = FRotator(Data->LadderCameraPitch, (-Movement->GetCurrentLadder()->GetClimbNormal()).Rotation().Yaw, 0.f);
+		LadderCameraTime = 0.f;
+	}
+	if (!bOnLadder || LadderCameraTime < 0.f)
+	{
+		LadderCameraTime = -1.f;
+		return;
+	}
+
+	//Looking around during the turn is added on top of it instead of fighting it
+	const FRotator LookInput = (PlayerController->GetControlRotation() - LadderCameraLast).GetNormalized();
+	LadderCameraStart += LookInput;
+	LadderCameraTarget += LookInput;
+
+	LadderCameraTime += DeltaSeconds;
+	const float Alpha = FMath::Min(LadderCameraTime / Data->LadderCameraBlendTime, 1.f);
+	LadderCameraLast = FMath::Lerp(LadderCameraStart, LadderCameraTarget, FMath::SmoothStep(0.f, 1.f, Alpha));
+	PlayerController->SetControlRotation(LadderCameraLast);
+	if (Alpha >= 1.f)
+	{
+		LadderCameraTime = -1.f;
+	}
 }
 
 void AMechaProtoCharacter::UpdateLadderAnimation()

@@ -98,14 +98,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Animation")
 	FName BodyAnimationSlot = FName("DefaultSlot");
 
-	//-----Ladder (forward climbs, back goes down, looking down past LadderLookDownPitch flips it, hold slide to slide down)
+	//-----Ladder (moving toward the rungs climbs, away goes down, looking down past LadderLookDownPitch forward goes down, hold slide to slide down)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "800", Units = "CentimetersPerSecond"))
 	float LadderClimbSpeed = 150.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "2500", Units = "CentimetersPerSecond"))
 	float LadderSlideSpeed = 900.f;
 
-	//Looking down more than this makes forward climb down (to get on from the top)
+	//Looking down more than this makes forward go down, whichever way the view faces
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", ClampMax = "89", Units = "Degrees"))
 	float LadderLookDownPitch = 35.f;
 
@@ -134,6 +134,14 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "1500", Units = "CentimetersPerSecond"))
 	float LadderJumpOffUpSpeed = 300.f;
+
+	//Time to turn the view to face the ladder when grabbing it, 0 leaves the view alone. Looking around during the turn adds to it
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder|Camera", meta = (ClampMin = "0", UIMax = "1", Units = "s"))
+	float LadderCameraBlendTime = 0.35f;
+
+	//Pitch the view turns to, 0 looks straight at the rungs
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder|Camera", meta = (ClampMin = "-89", ClampMax = "89", Units = "Degrees"))
+	float LadderCameraPitch = 0.f;
 
 	//-----Ladder animation: one climb loop, played forward going up, backward going down, paused when still
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder|Animation")

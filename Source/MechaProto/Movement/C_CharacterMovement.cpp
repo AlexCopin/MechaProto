@@ -4,6 +4,12 @@
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/Character.h"
 
+namespace
+{
+	//Feet this close below the top of a ladder count as standing on its top platform
+	constexpr float LadderTopZone = 20.f;
+}
+
 //-----Saved move
 
 void UC_CharacterMovement::FSavedMove_Mecha::Clear()
@@ -340,7 +346,7 @@ bool UC_CharacterMovement::CanGrabLadder(const AMP_Ladder* Ladder) const
 
 	const FVector Normal = Ladder->GetClimbNormal();
 	const float FeetZ = UpdatedComponent->GetComponentLocation().Z - CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	const bool bBelowTop = FeetZ < Ladder->GetTopZ() - 20.f;
+	const bool bBelowTop = FeetZ < Ladder->GetTopZ() - LadderTopZone;
 	//From the front: walk into the rungs. From the top platform: walk toward the climb side
 	const FVector GrabDirection = bBelowTop ? -Normal : Normal;
 	return FVector::DotProduct(InputDirection, GrabDirection) > Data->LadderGrabInputDot;
@@ -348,6 +354,10 @@ bool UC_CharacterMovement::CanGrabLadder(const AMP_Ladder* Ladder) const
 
 void UC_CharacterMovement::GrabLadder(AMP_Ladder* Ladder)
 {
+	const float ClimbInput = GetLadderClimbInput(Ladder);
+	LadderHeldInput = FMath::Abs(ClimbInput) > 0.1f ? GetViewInput().GetSafeNormal2D() : FVector::ZeroVector;
+	LadderHeldClimbSign = FMath::Sign(ClimbInput);
+
 	CurrentLadder = Ladder;
 	bWantsToCrouch = false;
 	Velocity = FVector::ZeroVector;
@@ -381,7 +391,7 @@ void UC_CharacterMovement::PhysLadder(float DeltaTime, int32 Iterations)
 	const float HalfHeight = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 	const float Radius = CharacterOwner->GetCapsuleComponent()->GetScaledCapsuleRadius();
 
-	//Forward climbs, looking down flips it (to get on from the top), slide input slides down
+	//Slide input slides down
 	float VerticalSpeed = 0.f;
 	if (bWantsToSlide)
 	{
@@ -389,11 +399,19 @@ void UC_CharacterMovement::PhysLadder(float DeltaTime, int32 Iterations)
 	}
 	else
 	{
-		const float InputScale = FMath::Max(GetMaxAcceleration(), UE_KINDA_SMALL_NUMBER);
-		const float ForwardInput = FMath::Clamp(FVector::DotProduct(Acceleration / InputScale, -Normal), -1.f, 1.f);
-		const float LookPitch = CharacterOwner->GetControlRotation().GetNormalized().Pitch;
-		const float Direction = LookPitch < -Data->LadderLookDownPitch ? -1.f : 1.f;
-		VerticalSpeed = ForwardInput * Direction * Data->LadderClimbSpeed;
+		//The input held when grabbing keeps its direction until it changes: the view turning to face the ladder
+		//would make the key that walked off the top platform climb back up
+		const FVector ViewInput = GetViewInput();
+		float ClimbInput = GetLadderClimbInput(Ladder);
+		if (FVector::DotProduct(ViewInput.GetSafeNormal2D(), LadderHeldInput) > 0.7f)
+		{
+			ClimbInput = LadderHeldClimbSign * FMath::Min(ViewInput.Size2D(), 1.f);
+		}
+		else
+		{
+			LadderHeldInput = FVector::ZeroVector;
+		}
+		VerticalSpeed = ClimbInput * Data->LadderClimbSpeed;
 	}
 
 	const FVector OldLocation = UpdatedComponent->GetComponentLocation();
@@ -407,11 +425,11 @@ void UC_CharacterMovement::PhysLadder(float DeltaTime, int32 Iterations)
 		return;
 	}
 
-	//Bottom: back on the ground
+	//Bottom: back on the ground. Not the top platform's floor, getting on from the top starts standing on it
 	if (VerticalSpeed < 0.f)
 	{
 		FindFloor(OldLocation, CurrentFloor, false);
-		const bool bOnFloor = CurrentFloor.IsWalkableFloor() && CurrentFloor.FloorDist < 5.f;
+		const bool bOnFloor = CurrentFloor.IsWalkableFloor() && CurrentFloor.FloorDist < 5.f && FeetZ < Ladder->GetTopZ() - LadderTopZone;
 		if (bOnFloor || FeetZ <= Ladder->GetBottomZ() + 2.f)
 		{
 			Velocity = FVector::ZeroVector;
@@ -443,5 +461,22 @@ void UC_CharacterMovement::PhysLadder(float DeltaTime, int32 Iterations)
 	{
 		Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / DeltaTime;
 	}
+}
+
+FVector UC_CharacterMovement::GetViewInput() const
+{
+	const FVector Input = Acceleration / FMath::Max(GetMaxAcceleration(), UE_KINDA_SMALL_NUMBER);
+	return FRotator(0.f, CharacterOwner->GetControlRotation().Yaw, 0.f).UnrotateVector(Input);
+}
+
+float UC_CharacterMovement::GetLadderClimbInput(const AMP_Ladder* Ladder) const
+{
+	//Toward the rungs climbs, away goes down (input is view relative, so walking off the top platform goes down)
+	//Looking down, forward goes down whatever the view faces
+	const FVector ViewInput = GetViewInput();
+	const FVector Input = Acceleration / FMath::Max(GetMaxAcceleration(), UE_KINDA_SMALL_NUMBER);
+	const bool bLookingDown = CharacterOwner->GetControlRotation().GetNormalized().Pitch < -GetMovementData()->LadderLookDownPitch;
+	const float ClimbInput = bLookingDown && ViewInput.X > UE_KINDA_SMALL_NUMBER ? -ViewInput.X : FVector::DotProduct(Input, -Ladder->GetClimbNormal());
+	return FMath::Clamp(ClimbInput, -1.f, 1.f);
 }
 

@@ -1,19 +1,16 @@
 #include "MP_WeaponStation.h"
-#include "C_Ragdoll.h"
 #include "C_StationUser.h"
 #include "MP_Projectile.h"
 #include "PDA_WeaponStation.h"
 #include "Camera/CameraComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "DrawDebugHelpers.h"
-#include "Engine/OverlapResult.h"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
-#include "NiagaraFunctionLibrary.h"
 #include "UObject/ConstructorHelpers.h"
 
 AMP_WeaponStation::AMP_WeaponStation()
@@ -22,6 +19,7 @@ AMP_WeaponStation::AMP_WeaponStation()
 	bReplicates = true;
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> PedestalMesh(TEXT("/Game/LevelPrototyping/Meshes/SM_Cylinder.SM_Cylinder"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> BlockMesh(TEXT("/Game/LevelPrototyping/Meshes/SM_ChamferCube.SM_ChamferCube"));
 
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	SetRootComponent(Root);
@@ -34,12 +32,46 @@ AMP_WeaponStation::AMP_WeaponStation()
 		BaseMesh->SetStaticMesh(PedestalMesh.Object);
 	}
 
+	InteractVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("Interact Volume"));
+	InteractVolume->SetupAttachment(Root);
+	InteractVolume->SetRelativeLocation(FVector(0.f, 0.f, 130.f));
+	InteractVolume->SetBoxExtent(FVector(100.f, 100.f, 140.f));
+	InteractVolume->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	InteractVolume->SetCollisionObjectType(ECC_WorldDynamic);
+	InteractVolume->SetCollisionResponseToAllChannels(ECR_Ignore);
+	InteractVolume->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	InteractVolume->SetGenerateOverlapEvents(false);
+	InteractVolume->SetCanEverAffectNavigation(false);
+
 	TurretYaw = CreateDefaultSubobject<USceneComponent>(TEXT("Turret Yaw"));
 	TurretYaw->SetupAttachment(Root);
 	TurretYaw->SetRelativeLocation(FVector(0.f, 0.f, 140.f));
 
 	TurretPitch = CreateDefaultSubobject<USceneComponent>(TEXT("Turret Pitch"));
 	TurretPitch->SetupAttachment(TurretYaw);
+
+	//Capsule center of a sitting user, floating 95 cm behind the gun and tilting with it: the gun is at the seated shoulders (95 cm above the feet, capsule half height 96)
+	Seat = CreateDefaultSubobject<USceneComponent>(TEXT("Seat"));
+	Seat->SetupAttachment(TurretPitch);
+	Seat->SetRelativeLocation(FVector(-95.f, 0.f, 0.f));
+
+	//The bench sit pose puts the pelvis 53 cm up and 33 cm behind the capsule center (13 in the pose + 20 mesh offset)
+	SeatMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Seat Mesh"));
+	SeatMesh->SetupAttachment(Seat);
+	SeatMesh->SetRelativeLocation(FVector(-33.f, 0.f, -74.f));
+	SeatMesh->SetRelativeScale3D(FVector(0.45f, 0.45f, 0.44f));
+	SeatMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	BackrestMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Backrest Mesh"));
+	BackrestMesh->SetupAttachment(Seat);
+	BackrestMesh->SetRelativeLocation(FVector(-59.f, 0.f, -22.f));
+	BackrestMesh->SetRelativeScale3D(FVector(0.08f, 0.45f, 0.6f));
+	BackrestMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	if (BlockMesh.Succeeded())
+	{
+		SeatMesh->SetStaticMesh(BlockMesh.Object);
+		BackrestMesh->SetStaticMesh(BlockMesh.Object);
+	}
 
 	//Template weapon meshes point along +Y
 	GunMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Gun Mesh"));
@@ -69,6 +101,7 @@ void AMP_WeaponStation::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 
 	DOREPLIFETIME(AMP_WeaponStation, User);
 	DOREPLIFETIME(AMP_WeaponStation, ReplicatedAim);
+	DOREPLIFETIME(AMP_WeaponStation, FireCounter);
 }
 
 const UPDA_WeaponStation* AMP_WeaponStation::GetStationData() const
@@ -212,13 +245,18 @@ void AMP_WeaponStation::ServerFire(const FVector& AimPoint)
 		Projectile->FinishSpawning(SpawnTransform);
 	}
 
-	Multicast_Fired();
+	//Replicated to the others, the server plays its own when someone else fires (OnRep doesn't run here)
+	++FireCounter;
+	if (!IsLocallyUsed() && GetNetMode() != NM_DedicatedServer)
+	{
+		PlayFireEffects();
+	}
 }
 
-void AMP_WeaponStation::Multicast_Fired_Implementation()
+void AMP_WeaponStation::OnRep_FireCounter()
 {
-	//The user already played it when pressing fire
-	if (!IsLocallyUsed())
+	//The user already played it when pressing fire, nobody fires an unused station (late join)
+	if (User && !IsLocallyUsed())
 	{
 		PlayFireEffects();
 	}
@@ -231,56 +269,4 @@ void AMP_WeaponStation::PlayFireEffects()
 		UGameplayStatics::PlaySoundAtLocation(this, Sound, Muzzle->GetComponentLocation());
 	}
 	OnFired();
-}
-
-void AMP_WeaponStation::Explode(const FVector& Center)
-{
-	const UPDA_WeaponStation* Data = GetStationData();
-	const float Radius = Data->ExplosionRadius;
-
-	FCollisionObjectQueryParams ObjectParams;
-	ObjectParams.AddObjectTypesToQuery(ECC_Pawn);
-	ObjectParams.AddObjectTypesToQuery(ECC_PhysicsBody);
-	ObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);
-	TArray<FOverlapResult> Overlaps;
-	GetWorld()->OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, ObjectParams, FCollisionShape::MakeSphere(Radius));
-
-	TSet<AActor*> ThrownPlayers;
-	for (const FOverlapResult& Overlap : Overlaps)
-	{
-		UPrimitiveComponent* Component = Overlap.GetComponent();
-		AActor* Actor = Overlap.GetActor();
-		if (Component && Component->IsSimulatingPhysics())
-		{
-			Component->AddRadialImpulse(Center, Radius, Data->ExplosionImpulse, RIF_Linear, true);
-		}
-
-		UC_Ragdoll* Ragdoll = Actor ? Actor->FindComponentByClass<UC_Ragdoll>() : nullptr;
-		if (Ragdoll && Data->bExplosionRagdollsPlayers && !ThrownPlayers.Contains(Actor))
-		{
-			ThrownPlayers.Add(Actor);
-			const FVector Away = (Actor->GetActorLocation() - Center).GetSafeNormal2D();
-			Ragdoll->StartRagdoll(Away * Data->ExplosionPlayerImpulse + FVector::UpVector * Data->ExplosionPlayerImpulseUp);
-		}
-	}
-
-	Multicast_Exploded(Center);
-}
-
-void AMP_WeaponStation::Multicast_Exploded_Implementation(FVector_NetQuantize Center)
-{
-	const UPDA_WeaponStation* Data = GetStationData();
-	if (Data->ExplosionSound)
-	{
-		UGameplayStatics::PlaySoundAtLocation(this, Data->ExplosionSound, Center);
-	}
-	if (Data->ExplosionEffect)
-	{
-		UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, Data->ExplosionEffect, Center);
-	}
-	if (Data->bDrawExplosionDebug)
-	{
-		DrawDebugSphere(GetWorld(), Center, Data->ExplosionRadius, 16, FColor::Orange, false, 0.6f);
-	}
-	OnExploded(Center, Data->ExplosionRadius);
 }

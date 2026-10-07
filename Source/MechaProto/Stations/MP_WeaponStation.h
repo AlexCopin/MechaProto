@@ -6,12 +6,13 @@
 #include "MP_WeaponStation.generated.h"
 
 class ACharacter;
+class UBoxComponent;
 class UCameraComponent;
 class UPDA_WeaponStation;
 class USpringArmComponent;
 class UStaticMeshComponent;
 
-//Weapon station a player mans with interact: third person camera around it, fires projectiles at the aim
+//Weapon station a player mans with interact: third person camera around it, fires projectiles at the aim (for enemies, never hits players)
 UCLASS()
 class MECHAPROTO_API AMP_WeaponStation : public AActor, public IMP_Interactable
 {
@@ -34,6 +35,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Station")
 	ACharacter* GetUser() const { return User; }
 
+	//Where the user's capsule goes: behind the gun, turning and tilting with it
+	USceneComponent* GetSeat() const { return Seat; }
+
 	//Server, called by UC_StationUser
 	void SetUser(ACharacter* NewUser);
 
@@ -48,16 +52,14 @@ public:
 	//Server: spawns a projectile from the muzzle toward the aim point
 	void ServerFire(const FVector& AimPoint);
 
-	//Plays the fire sound, called locally by the user and by the server for the others
+	//Plays the fire sound: locally by the user when firing, from FireCounter for the others
 	void PlayFireEffects();
 
-	//Server, from a projectile of this station
-	void Explode(const FVector& Center);
-
-	//BP hooks for effects
+	//BP hooks for effects, every machine
 	UFUNCTION(BlueprintImplementableEvent, Category = "Station")
 	void OnFired();
 
+	//Called by its projectiles when they explode
 	UFUNCTION(BlueprintImplementableEvent, Category = "Station")
 	void OnExploded(FVector Center, float Radius);
 
@@ -68,6 +70,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<UStaticMeshComponent> BaseMesh;
 
+	//Big box only the interact trace sees (Visibility), so the station is easy to target
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UBoxComponent> InteractVolume;
+
 	//Yaw part of the turret
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<USceneComponent> TurretYaw;
@@ -75,6 +81,17 @@ protected:
 	//Pitch part, carries the gun and the muzzle
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<USceneComponent> TurretPitch;
+
+	//User's capsule center, on the pitch part: always behind the gun, turning and tilting with it. Moved in the BP to fit the gun
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<USceneComponent> Seat;
+
+	//Visual only, under the sitting pose's pelvis
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UStaticMeshComponent> SeatMesh;
+
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UStaticMeshComponent> BackrestMesh;
 
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<UStaticMeshComponent> GunMesh;
@@ -99,11 +116,12 @@ protected:
 	UPROPERTY(Replicated)
 	FRotator ReplicatedAim = FRotator::ZeroRotator;
 
-	UFUNCTION(NetMulticast, Unreliable)
-	void Multicast_Fired();
+	//Shots fired, the other players play the fire effects when it changes (several shots between two updates play once)
+	UPROPERTY(ReplicatedUsing = OnRep_FireCounter)
+	uint8 FireCounter = 0;
 
-	UFUNCTION(NetMulticast, Unreliable)
-	void Multicast_Exploded(FVector_NetQuantize Center);
+	UFUNCTION()
+	void OnRep_FireCounter();
 
 	bool IsLocallyUsed() const;
 	void ApplyTurretRotation(const FRotator& WorldAim);

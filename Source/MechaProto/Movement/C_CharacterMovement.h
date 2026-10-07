@@ -91,8 +91,15 @@ protected:
 	void GrabLadder(AMP_Ladder* Ladder);
 	void LeaveLadder(const FVector& NewVelocity);
 	void PhysLadder(float DeltaTime, int32 Iterations);
+	//Move input in view space (X forward, Y right)
+	FVector GetViewInput() const;
+	//-1 down to 1 up, from the move input and the view
+	float GetLadderClimbInput(const AMP_Ladder* Ladder) const;
 
 	TWeakObjectPtr<AMP_Ladder> CurrentLadder;
+	//Input held when grabbing (view space) and its climb direction, kept until the input changes
+	FVector LadderHeldInput = FVector::ZeroVector;
+	float LadderHeldClimbSign = 0.f;
 	//Counted in move time so replays agree
 	float TimeSinceLadderLeft = 100.f;
 

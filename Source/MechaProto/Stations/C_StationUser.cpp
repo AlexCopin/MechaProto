@@ -1,5 +1,6 @@
 #include "C_StationUser.h"
 #include "MP_WeaponStation.h"
+#include "C_Ragdoll.h"
 #include "PDA_WeaponStation.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
@@ -8,6 +9,7 @@
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "InputMappingContext.h"
 #include "Net/UnrealNetwork.h"
@@ -86,6 +88,7 @@ void UC_StationUser::ApplyStation()
 	AppliedStation = Station;
 	bFiring = false;
 
+	ApplySeat(Station, OldStation);
 	ApplyLocalView(Station, OldStation);
 	ApplyManningPose(Station);
 	OnStationChanged.Broadcast(Station);
@@ -116,6 +119,49 @@ void UC_StationUser::ApplyLocalView(AMP_WeaponStation* NewStation, AMP_WeaponSta
 		{
 			Subsystem->RemoveMappingContext(StationMappingContext);
 		}
+	}
+}
+
+void UC_StationUser::ApplySeat(AMP_WeaponStation* NewStation, AMP_WeaponStation* OldStation)
+{
+	ACharacter* Character = Cast<ACharacter>(GetOwner());
+	UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+	if (!Movement)
+	{
+		return;
+	}
+
+	if (NewStation)
+	{
+		Movement->StopMovementImmediately();
+		Movement->DisableMovement();
+		//The turret turns a bit later on the server (aim sent at 10 Hz): that offset is not a movement error to correct
+		Movement->bIgnoreClientMovementErrorChecksAndCorrection = true;
+		Character->bUseControllerRotationYaw = false;
+		Character->AttachToComponent(NewStation->GetSeat(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+		return;
+	}
+
+	if (!OldStation)
+	{
+		return;
+	}
+	Character->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	Character->bUseControllerRotationYaw = GetDefault<ACharacter>(Character->GetClass())->bUseControllerRotationYaw;
+	Movement->bIgnoreClientMovementErrorChecksAndCorrection = GetDefault<UCharacterMovementComponent>(Movement->GetClass())->bIgnoreClientMovementErrorChecksAndCorrection;
+
+	//Knocked off by a ragdoll: it handles the movement itself
+	const UC_Ragdoll* Ragdoll = Character->FindComponentByClass<UC_Ragdoll>();
+	if (Ragdoll && Ragdoll->IsRagdolled())
+	{
+		return;
+	}
+	Character->SetActorRotation(FRotator(0.f, Character->GetActorRotation().Yaw, 0.f));
+	Movement->SetDefaultMovementMode();
+	if (Character->HasAuthority())
+	{
+		//Stand up out of the seat and the pedestal
+		Character->TeleportTo(Character->GetActorLocation(), Character->GetActorRotation());
 	}
 }
 

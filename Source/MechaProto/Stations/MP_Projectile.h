@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Engine/NetSerialization.h"
 #include "MP_Projectile.generated.h"
 
 class UPDA_WeaponStation;
@@ -9,7 +10,7 @@ class UProjectileMovementComponent;
 class USphereComponent;
 class UStaticMeshComponent;
 
-//Projectile fired by a weapon station (its owner), spawned and resolved on the server, replicated
+//Projectile fired by a weapon station (its owner), spawned and resolved on the server, replicated. Never hits players
 UCLASS()
 class MECHAPROTO_API AMP_Projectile : public AActor
 {
@@ -40,6 +41,20 @@ protected:
 	UPROPERTY(Replicated)
 	TObjectPtr<UPDA_WeaponStation> Data;
 
+	//Set by the server on impact, clients play the explosion from it
+	UPROPERTY(ReplicatedUsing = OnRep_ExplosionLocation)
+	FVector_NetQuantize ExplosionLocation;
+
+	UFUNCTION()
+	void OnRep_ExplosionLocation();
+
 	void ApplyData();
+	//Server: impulses on physics objects in the radius, then the effects everywhere
+	void Explode(const FVector& Center);
+	void PlayExplosionEffects();
+	//Hidden and stopped, kept alive a moment so the explosion replicates
+	void Freeze();
+
 	bool bHit = false;
+	bool bExploded = false;
 };

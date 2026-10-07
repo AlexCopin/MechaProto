@@ -10,7 +10,7 @@ class UInputMappingContext;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStationChanged, AMP_WeaponStation*, Station);
 
-//Lets the owning character man a weapon station: camera, input, aim and fire go through it while the character stays in the world
+//Lets the owning character man a weapon station: seated behind the gun and turning with it, camera, input, aim and fire go through the station
 UCLASS(ClassGroup = (MechaProto), meta = (BlueprintSpawnableComponent))
 class MECHAPROTO_API UC_StationUser : public UActorComponent
 {
@@ -63,6 +63,8 @@ protected:
 	//Camera, input and pose follow the replicated station on every machine
 	void ApplyStation();
 	void ApplyLocalView(AMP_WeaponStation* NewStation, AMP_WeaponStation* OldStation);
+	//Attached to the seat with movement off, every machine
+	void ApplySeat(AMP_WeaponStation* NewStation, AMP_WeaponStation* OldStation);
 	void ApplyManningPose(AMP_WeaponStation* NewStation);
 
 	TWeakObjectPtr<AMP_WeaponStation> AppliedStation;

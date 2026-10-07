@@ -9,7 +9,7 @@ class UNiagaraSystem;
 class USoundBase;
 class UStaticMesh;
 
-//One weapon station type (missile launcher, gatling...), read live so it can be edited during PIE
+//One weapon station type (missile launcher, gatling...), read live so it can be edited during PIE. Weapons are for enemies, players are never hit
 UCLASS(BlueprintType)
 class MECHAPROTO_API UPDA_WeaponStation : public UPrimaryDataAsset
 {
@@ -56,31 +56,17 @@ public:
 	FVector ProjectileMeshScale = FVector(0.05f);
 
 	//-----Hit (no explosion)
-	//Push on physics objects hit
+	//Push on physics objects hit (players are never hit)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hit", meta = (ClampMin = "0", UIMax = "3000"))
 	float HitImpulse = 300.f;
 
-	//A hit on a player counts as a slap (knockback, ragdoll after enough)
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hit")
-	bool bHitCountsAsSlap = true;
-
-	//-----Explosion (0 radius = no explosion)
+	//-----Explosion (0 radius = no explosion), pushes physics objects, not players
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Explosion", meta = (ClampMin = "0", UIMax = "2000", Units = "cm"))
 	float ExplosionRadius = 0.f;
 
 	//Velocity given to physics objects at the center, fading to the edge
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Explosion", meta = (ClampMin = "0", UIMax = "5000"))
 	float ExplosionImpulse = 1500.f;
-
-	//Players in the radius are ragdolled and thrown
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Explosion")
-	bool bExplosionRagdollsPlayers = true;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Explosion", meta = (ClampMin = "0", UIMax = "3000"))
-	float ExplosionPlayerImpulse = 900.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Explosion", meta = (ClampMin = "0", UIMax = "3000"))
-	float ExplosionPlayerImpulseUp = 500.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Explosion")
 	TObjectPtr<USoundBase> ExplosionSound;

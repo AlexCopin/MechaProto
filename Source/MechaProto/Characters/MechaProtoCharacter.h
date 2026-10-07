@@ -205,6 +205,15 @@ protected:
 	TWeakObjectPtr<UAnimMontage> LadderMontage;
 	TWeakObjectPtr<UAnimSequenceBase> LadderMontageAnimation;
 
+	//Turns the view to face the ladder when grabbing it (owner only)
+	void UpdateLadderCamera(float DeltaSeconds);
+	bool bLadderCameraWasOnLadder = false;
+	//Negative when not turning
+	float LadderCameraTime = -1.f;
+	FRotator LadderCameraStart = FRotator::ZeroRotator;
+	FRotator LadderCameraTarget = FRotator::ZeroRotator;
+	FRotator LadderCameraLast = FRotator::ZeroRotator;
+
 	//Body mesh render settings to restore after ragdoll
 	bool bMeshOwnerNoSee = true;
 	EFirstPersonPrimitiveType MeshFirstPersonType = EFirstPersonPrimitiveType::WorldSpaceRepresentation;
