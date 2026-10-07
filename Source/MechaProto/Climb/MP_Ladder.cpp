@@ -72,11 +72,56 @@ void AMP_Ladder::OnConstruction(const FTransform& Transform)
 	{
 		BuildPlaceholder();
 	}
+	UpdateClimbBounds();
 
-	//From behind the ladder to GrabDepth in front, up to above the top to grab it from the platform
-	const float TopMargin = 120.f;
-	ClimbVolume->SetBoxExtent(FVector(GrabDepth * 0.5f + 10.f, Width * 0.5f + 20.f, (Height + TopMargin) * 0.5f));
-	ClimbVolume->SetRelativeLocation(FVector(FrontOffset + GrabDepth * 0.5f - 10.f, 0.f, (Height + TopMargin) * 0.5f));
+	//From just behind the climb face to GrabDepth in front, up to above the top to grab it from the platform
+	//Margins are world sizes, divided by the actor scale the volume inherits
+	const FVector Scale = Transform.GetScale3D().GetAbs().ComponentMax(FVector(0.01f));
+	const FBox Volume(
+		FVector(ClimbBounds.Max.X - 20.f / Scale.X, ClimbBounds.Min.Y - 20.f / Scale.Y, ClimbBounds.Min.Z),
+		FVector(ClimbBounds.Max.X + GrabDepth / Scale.X, ClimbBounds.Max.Y + 20.f / Scale.Y, ClimbBounds.Max.Z + 120.f / Scale.Z));
+	ClimbVolume->SetRelativeLocation(Volume.GetCenter());
+	ClimbVolume->SetBoxExtent(Volume.GetExtent());
+}
+
+void AMP_Ladder::BeginPlay()
+{
+	Super::BeginPlay();
+
+	//Placed actors aren't constructed again in game
+	UpdateClimbBounds();
+}
+
+void AMP_Ladder::UpdateClimbBounds()
+{
+	//What is shown, in actor space: follows Height, Width and any scale set on the mesh components
+	ClimbBounds.Init();
+	if (Segments->GetStaticMesh() && Segments->GetInstanceCount() > 0)
+	{
+		const FBox MeshBox = Segments->GetStaticMesh()->GetBoundingBox();
+		const FTransform ToActor = Segments->GetRelativeTransform();
+		for (int32 Index = 0; Index < Segments->GetInstanceCount(); ++Index)
+		{
+			FTransform Instance;
+			Segments->GetInstanceTransform(Index, Instance, false);
+			ClimbBounds += MeshBox.TransformBy(Instance * ToActor);
+		}
+	}
+	else if (!LadderMesh)
+	{
+		for (const UStaticMeshComponent* Rail : { LeftRail.Get(), RightRail.Get() })
+		{
+			if (Rail->GetStaticMesh())
+			{
+				ClimbBounds += Rail->GetStaticMesh()->GetBoundingBox().TransformBy(Rail->GetRelativeTransform());
+			}
+		}
+	}
+
+	if (!ClimbBounds.IsValid)
+	{
+		ClimbBounds = FBox(FVector(-5.f, -Width * 0.5f, 0.f), FVector(5.f, Width * 0.5f, Height));
+	}
 }
 
 void AMP_Ladder::BuildFromMesh()
@@ -94,13 +139,11 @@ void AMP_Ladder::BuildFromMesh()
 	const bool bWidthAlongX = Size.X >= Size.Y;
 	const FRotator Rotation = bWidthAlongX ? FRotator(0.f, 90.f, 0.f) : FRotator::ZeroRotator;
 	const float MeshWidth = bWidthAlongX ? Size.X : Size.Y;
-	const float MeshDepth = bWidthAlongX ? Size.Y : Size.X;
 
 	const float Scale = Width / MeshWidth;
 	const int32 Count = FMath::Max(1, FMath::RoundToInt(Height / (Size.Z * Scale)));
 	const float ScaleZ = Height / (Count * Size.Z);
 	const FVector Scale3D(Scale, Scale, ScaleZ);
-	FrontOffset = MeshDepth * Scale * 0.5f;
 
 	//Mesh center and bottom moved to the actor origin
 	const FVector Center = Bounds.GetCenter();
@@ -116,7 +159,6 @@ void AMP_Ladder::BuildFromMesh()
 void AMP_Ladder::BuildPlaceholder()
 {
 	const float HalfWidth = Width * 0.5f;
-	FrontOffset = RailThickness * 0.5f;
 
 	LeftRail->SetRelativeLocation(FVector(0.f, -HalfWidth, Height * 0.5f));
 	RightRail->SetRelativeLocation(FVector(0.f, HalfWidth, Height * 0.5f));
@@ -136,16 +178,17 @@ FVector AMP_Ladder::GetClimbNormal() const
 
 float AMP_Ladder::GetBottomZ() const
 {
-	return GetActorLocation().Z;
+	return GetActorTransform().TransformPosition(FVector(0.f, 0.f, ClimbBounds.Min.Z)).Z;
 }
 
 float AMP_Ladder::GetTopZ() const
 {
-	return GetActorLocation().Z + Height;
+	return GetActorTransform().TransformPosition(FVector(0.f, 0.f, ClimbBounds.Max.Z)).Z;
 }
 
 FVector AMP_Ladder::GetClimbLocation(float Z, float Distance) const
 {
-	const FVector Base = GetActorLocation() + GetClimbNormal() * (FrontOffset + Distance);
+	const FVector Face = GetActorTransform().TransformPosition(FVector(ClimbBounds.Max.X, ClimbBounds.GetCenter().Y, 0.f));
+	const FVector Base = Face + GetClimbNormal() * Distance;
 	return FVector(Base.X, Base.Y, Z);
 }

@@ -56,13 +56,24 @@ public:
 	FVector ProjectileMeshScale = FVector(0.05f);
 
 	//-----Hit (no explosion)
+	//Damage to the enemy hit
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hit", meta = (ClampMin = "0", UIMax = "500"))
+	float HitDamage = 10.f;
+
 	//Push on physics objects hit (players are never hit)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hit", meta = (ClampMin = "0", UIMax = "3000"))
 	float HitImpulse = 300.f;
 
-	//-----Explosion (0 radius = no explosion), pushes physics objects, not players
+	//-----Explosion (0 radius = no explosion), damages enemies and pushes physics objects, not players
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Explosion", meta = (ClampMin = "0", UIMax = "2000", Units = "cm"))
 	float ExplosionRadius = 0.f;
+
+	//Damage to the enemies at the center, fading to ExplosionEdgeDamageScale at the edge
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Explosion", meta = (ClampMin = "0", UIMax = "2000"))
+	float ExplosionDamage = 100.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Explosion", meta = (ClampMin = "0", ClampMax = "1"))
+	float ExplosionEdgeDamageScale = 0.3f;
 
 	//Velocity given to physics objects at the center, fading to the edge
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Explosion", meta = (ClampMin = "0", UIMax = "5000"))

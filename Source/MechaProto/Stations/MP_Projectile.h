@@ -49,7 +49,7 @@ protected:
 	void OnRep_ExplosionLocation();
 
 	void ApplyData();
-	//Server: impulses on physics objects in the radius, then the effects everywhere
+	//Server: damage to the enemies and impulses on physics objects in the radius, then the effects everywhere
 	void Explode(const FVector& Center);
 	void PlayExplosionEffects();
 	//Hidden and stopped, kept alive a moment so the explosion replicates

@@ -10,7 +10,8 @@ class UInstancedStaticMeshComponent;
 class UStaticMesh;
 class UStaticMeshComponent;
 
-//Climbable ladder, placed against a wall: the arrow (actor forward) points to the side players climb from, the origin is the bottom
+//Climbable ladder, placed against a wall: the arrow (actor forward) points to the side players climb from
+//The climbable zone follows the shown mesh, so the actor can be scaled freely
 UCLASS()
 class MECHAPROTO_API AMP_Ladder : public AActor
 {
@@ -20,9 +21,11 @@ public:
 	AMP_Ladder();
 
 	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void BeginPlay() override;
 
 	//Side the climber stands on
 	FVector GetClimbNormal() const;
+	//Bottom and top of the shown mesh
 	float GetBottomZ() const;
 	float GetTopZ() const;
 	//Point in front of the ladder at the given height, Distance from the front of the rungs
@@ -56,7 +59,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Ladder")
 	TObjectPtr<UStaticMesh> LadderMesh;
 
-	//From the actor origin (bottom) to the top platform
+	//Height of the built ladder before the actor scale, from the actor origin (bottom)
 	UPROPERTY(EditAnywhere, Category = "Ladder", meta = (ClampMin = "100", UIMax = "2000", Units = "cm"))
 	float Height = 400.f;
 
@@ -67,14 +70,14 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Ladder", meta = (ClampMin = "10", UIMax = "60", Units = "cm"))
 	float RungSpacing = 30.f;
 
-	//How far in front of the rungs players can grab it
+	//How far in front of the rungs players can grab it, whatever the actor scale
 	UPROPERTY(EditAnywhere, Category = "Ladder", meta = (ClampMin = "20", UIMax = "200", Units = "cm"))
 	float GrabDepth = 80.f;
 
 	void BuildFromMesh();
 	void BuildPlaceholder();
+	void UpdateClimbBounds();
 
-	//Distance from the origin to the climb side face of the ladder
-	UPROPERTY()
-	float FrontOffset = 0.f;
+	//Box of the shown mesh in actor space (before the actor scale), +X is the climb face
+	FBox ClimbBounds = FBox(ForceInit);
 };

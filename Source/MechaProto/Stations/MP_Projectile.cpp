@@ -120,9 +120,16 @@ void AMP_Projectile::NotifyHit(UPrimitiveComponent* MyComp, AActor* Other, UPrim
 		return;
 	}
 
-	if (OtherComp && OtherComp->IsSimulatingPhysics() && !IsPlayer(Other))
+	if (Other && !IsPlayer(Other))
 	{
-		OtherComp->AddImpulseAtLocation(GetVelocity().GetSafeNormal() * Data->HitImpulse * OtherComp->GetMass(), Hit.ImpactPoint);
+		if (Data->HitDamage > 0.f)
+		{
+			UGameplayStatics::ApplyPointDamage(Other, Data->HitDamage, GetVelocity().GetSafeNormal(), Hit, GetInstigatorController(), this, nullptr);
+		}
+		if (OtherComp && OtherComp->IsSimulatingPhysics())
+		{
+			OtherComp->AddImpulseAtLocation(GetVelocity().GetSafeNormal() * Data->HitImpulse * OtherComp->GetMass(), Hit.ImpactPoint);
+		}
 	}
 	Destroy();
 }
@@ -132,15 +139,33 @@ void AMP_Projectile::Explode(const FVector& Center)
 	FCollisionObjectQueryParams ObjectParams;
 	ObjectParams.AddObjectTypesToQuery(ECC_PhysicsBody);
 	ObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);
+	ObjectParams.AddObjectTypesToQuery(ECC_Pawn);
 	TArray<FOverlapResult> Overlaps;
 	GetWorld()->OverlapMultiByObjectType(Overlaps, Center, FQuat::Identity, ObjectParams, FCollisionShape::MakeSphere(Data->ExplosionRadius));
 
+	TSet<AActor*> Damaged;
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
 		UPrimitiveComponent* Component = Overlap.GetComponent();
-		if (Component && Component->IsSimulatingPhysics() && !IsPlayer(Overlap.GetActor()))
+		AActor* Actor = Overlap.GetActor();
+		if (!Component || IsPlayer(Actor))
+		{
+			continue;
+		}
+		if (Component->IsSimulatingPhysics())
 		{
 			Component->AddRadialImpulse(Center, Data->ExplosionRadius, Data->ExplosionImpulse, RIF_Linear, true);
+		}
+
+		//Once per actor, by the distance to its collision (a big enemy hit on the side takes full damage)
+		bool bAlreadyDamaged = false;
+		Damaged.Add(Actor, &bAlreadyDamaged);
+		if (Actor && !bAlreadyDamaged && Data->ExplosionDamage > 0.f && Actor->CanBeDamaged())
+		{
+			FVector ClosestPoint;
+			const float Distance = FMath::Max(0.f, Component->GetDistanceToCollision(Center, ClosestPoint));
+			const float Scale = FMath::Lerp(1.f, Data->ExplosionEdgeDamageScale, FMath::Clamp(Distance / Data->ExplosionRadius, 0.f, 1.f));
+			UGameplayStatics::ApplyDamage(Actor, Data->ExplosionDamage * Scale, GetInstigatorController(), this, nullptr);
 		}
 	}
 

@@ -40,6 +40,8 @@ public class MechaProto : ModuleRules
 			"MechaProto/Climb",
 			"MechaProto/Stations",
 			"MechaProto/Items",
+			"MechaProto/Enemies",
+			"MechaProto/Hull",
 			"MechaProto/Variant_Horror",
 			"MechaProto/Variant_Horror/UI",
 			"MechaProto/Variant_Shooter",
