@@ -4,6 +4,9 @@
 #include "Components/ActorComponent.h"
 #include "C_Interactor.generated.h"
 
+class APawn;
+class UMaterialInterface;
+class UMeshComponent;
 class UPDA_Interaction;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnInteractFocusChanged, AActor*, FocusedActor, FText, Prompt);
@@ -33,6 +36,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Interact")
 	const UPDA_Interaction* GetInteractionData() const;
 
+	//What the pawn aims at within InteractRange: the first actor the look sweep hits if it is a target, else the target closest to the view direction within InteractAssistAngle and in sight
+	static AActor* FindTarget(const APawn* Pawn, const UPDA_Interaction* Data, TFunctionRef<bool(AActor*)> IsTarget, const AActor* IgnoredActor = nullptr);
+
 	//Local player only, for the prompt widget
 	UPROPERTY(BlueprintAssignable, Category = "Interact")
 	FOnInteractFocusChanged OnFocusChanged;
@@ -46,6 +52,16 @@ protected:
 
 	void UpdateFocus();
 	AActor* FindLookedAtInteractable() const;
+	//Local: the focus overlay on the focused actor's meshes, their own overlay given back when cleared
+	void SetHighlight(AActor* Actor);
+
+	struct FHighlightedMesh
+	{
+		TWeakObjectPtr<UMeshComponent> Mesh;
+		TWeakObjectPtr<UMaterialInterface> PreviousOverlay;
+	};
+	TArray<FHighlightedMesh> HighlightedMeshes;
+	TWeakObjectPtr<UMaterialInterface> AppliedOverlay;
 
 	TWeakObjectPtr<AActor> FocusedActor;
 	FText FocusedPrompt;

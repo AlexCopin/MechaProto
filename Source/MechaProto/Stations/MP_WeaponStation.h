@@ -6,6 +6,7 @@
 #include "MP_WeaponStation.generated.h"
 
 class ACharacter;
+class AMP_Breakable;
 class UBoxComponent;
 class UCameraComponent;
 class UPDA_WeaponStation;
@@ -49,6 +50,10 @@ public:
 
 	bool IsFireReady(float LastFireTime) const;
 
+	//A required system is broken: can't fire
+	UFUNCTION(BlueprintPure, Category = "Station")
+	bool IsDisabled() const;
+
 	//Server: spawns a projectile from the muzzle toward the aim point
 	void ServerFire(const FVector& AimPoint);
 
@@ -64,6 +69,10 @@ public:
 	void OnExploded(FVector Center, float Radius);
 
 protected:
+	//Mech systems this station needs (engine, rotor...): it can't fire while one of them is broken
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Station")
+	TArray<TObjectPtr<AMP_Breakable>> RequiredSystems;
+
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<USceneComponent> Root;
 

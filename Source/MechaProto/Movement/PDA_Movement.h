@@ -157,4 +157,13 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder|Animation", meta = (ClampMin = "0", UIMax = "1", Units = "s"))
 	float LadderAnimationBlendTime = 0.15f;
+
+	//-----Pushing physics objects (items...) by walking into them, the push accelerates light ones more
+	//Impulse on an object at rest (engine default 500)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Push", meta = (ClampMin = "0", UIMax = "5000"))
+	float InitialPushImpulse = 300.f;
+
+	//Force while walking into a moving object (engine default 750000, launches a 5 kg item at hundreds of m/s)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Push", meta = (ClampMin = "0", UIMax = "200000"))
+	float PushForce = 20000.f;
 };

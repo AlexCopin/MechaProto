@@ -113,6 +113,14 @@ FNetworkPredictionData_Client* UC_CharacterMovement::GetPredictionData_Client() 
 	return ClientPredictionData;
 }
 
+void UC_CharacterMovement::ApplyImpactPhysicsForces(const FHitResult& Impact, const FVector& ImpactAcceleration, const FVector& ImpactVelocity)
+{
+	const UPDA_Movement* Data = GetMovementData();
+	InitialPushForceFactor = Data->InitialPushImpulse;
+	PushForceFactor = Data->PushForce;
+	Super::ApplyImpactPhysicsForces(Impact, ImpactAcceleration, ImpactVelocity);
+}
+
 float UC_CharacterMovement::GetMaxSpeed() const
 {
 	if (IsSliding())

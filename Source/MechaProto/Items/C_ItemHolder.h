@@ -30,10 +30,13 @@ public:
 	//Server
 	bool PickUp(AMP_Item* Item);
 	void Drop();
+	//Server: released at ThrowSpeed, slaps the first player hit (bThrowSlapsPlayers)
+	void Throw();
 
 	//Local input
 	void RequestDrop();
 	void RequestUse();
+	void RequestThrow();
 
 	//Fired on every machine
 	UPROPERTY(BlueprintAssignable, Category = "Items")
@@ -54,4 +57,10 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void Server_Use();
+
+	UFUNCTION(Server, Reliable)
+	void Server_Throw();
+
+	//In front of the eyes (not through a wall) at this speed along the view
+	void ReleaseHeldItem(float Speed, float UpSpeed, bool bThrow);
 };

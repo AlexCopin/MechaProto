@@ -1,4 +1,5 @@
 #include "MP_WeaponStation.h"
+#include "MP_Breakable.h"
 #include "C_StationUser.h"
 #include "MP_Projectile.h"
 #include "PDA_WeaponStation.h"
@@ -206,12 +207,24 @@ void AMP_WeaponStation::ApplyTurretRotation(const FRotator& WorldAim)
 
 bool AMP_WeaponStation::IsFireReady(float LastFireTime) const
 {
-	return GetWorld()->GetTimeSeconds() - LastFireTime >= GetStationData()->FireCooldown;
+	return !IsDisabled() && GetWorld()->GetTimeSeconds() - LastFireTime >= GetStationData()->FireCooldown;
+}
+
+bool AMP_WeaponStation::IsDisabled() const
+{
+	for (const AMP_Breakable* System : RequiredSystems)
+	{
+		if (System && System->IsBroken())
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void AMP_WeaponStation::ServerFire(const FVector& AimPoint)
 {
-	if (!HasAuthority() || !User)
+	if (!HasAuthority() || !User || IsDisabled())
 	{
 		return;
 	}

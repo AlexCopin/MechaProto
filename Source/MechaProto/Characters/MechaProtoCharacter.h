@@ -112,6 +112,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category ="Input")
 	TObjectPtr<UInputAction> UseItemAction;
+
+	UPROPERTY(EditAnywhere, Category ="Input")
+	TObjectPtr<UInputAction> ThrowItemAction;
 	
 public:
 	AMechaProtoCharacter();
@@ -151,6 +154,9 @@ protected:
 
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoUseItem();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void DoThrowItem();
 
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoStationFireStart();

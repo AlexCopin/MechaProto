@@ -52,6 +52,18 @@ bool UC_ItemHolder::PickUp(AMP_Item* Item)
 
 void UC_ItemHolder::Drop()
 {
+	const UPDA_Interaction* Data = GetInteractionData();
+	ReleaseHeldItem(Data->DropSpeed, Data->DropUpSpeed, false);
+}
+
+void UC_ItemHolder::Throw()
+{
+	const UPDA_Interaction* Data = GetInteractionData();
+	ReleaseHeldItem(Data->ThrowSpeed, Data->ThrowUpSpeed, true);
+}
+
+void UC_ItemHolder::ReleaseHeldItem(float Speed, float UpSpeed, bool bThrow)
+{
 	ACharacter* Character = Cast<ACharacter>(GetOwner());
 	if (!Character || !Character->HasAuthority() || !HeldItem)
 	{
@@ -70,11 +82,11 @@ void UC_ItemHolder::Drop()
 	{
 		Location = Hit.Location - Forward * 20.f;
 	}
-	const FVector Velocity = Character->GetVelocity() + Forward * Data->DropSpeed + FVector::UpVector * Data->DropUpSpeed;
+	const FVector Velocity = Character->GetVelocity() + Forward * Speed + FVector::UpVector * UpSpeed;
 
 	AMP_Item* Item = HeldItem;
 	HeldItem = nullptr;
-	Item->Release(Location, Velocity);
+	Item->Release(Location, Velocity, bThrow ? Character : nullptr);
 	OnHeldItemChanged.Broadcast(nullptr);
 	Character->ForceNetUpdate();
 }
@@ -89,10 +101,23 @@ void UC_ItemHolder::RequestDrop()
 
 void UC_ItemHolder::RequestUse()
 {
-	if (HeldItem)
+	if (HeldItem && HeldItem->PredictUse())
 	{
 		Server_Use();
 	}
+}
+
+void UC_ItemHolder::RequestThrow()
+{
+	if (HeldItem)
+	{
+		Server_Throw();
+	}
+}
+
+void UC_ItemHolder::Server_Throw_Implementation()
+{
+	Throw();
 }
 
 void UC_ItemHolder::Server_Drop_Implementation()

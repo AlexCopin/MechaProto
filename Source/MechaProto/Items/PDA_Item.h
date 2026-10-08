@@ -4,6 +4,8 @@
 #include "Engine/DataAsset.h"
 #include "PDA_Item.generated.h"
 
+class UAnimSequenceBase;
+
 //One item type (crate, canister...), its use comes from the item BP or a C++ child of AMP_Item
 UCLASS(BlueprintType)
 class MECHAPROTO_API UPDA_Item : public UPrimaryDataAsset
@@ -20,9 +22,34 @@ public:
 
 	//Overrides the mesh mass (0 = from the mesh volume)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item", meta = (ClampMin = "0", UIMax = "200", Units = "kg"))
-	float Mass = 10.f;
+	float Mass = 20.f;
+
+	//Thrown (right click) and hitting a player = a slap from the thrower (counts toward the ragdoll)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
+	bool bThrowSlapsPlayers = false;
 
 	//Time between two uses
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item", meta = (ClampMin = "0", UIMax = "5", Units = "s"))
 	float UseCooldown = 0.5f;
+
+	//-----Use animation, played on the holder's body (the first person arms copy it) at each use, on every machine
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Use Animation")
+	TObjectPtr<UAnimSequenceBase> UseAnimation;
+
+	//Part of the animation played: from this time, for this long (animation time), then it blends out
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Use Animation", meta = (ClampMin = "0", Units = "s"))
+	float UseAnimationStartTime = 0.f;
+
+	//0 = to the end
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Use Animation", meta = (ClampMin = "0", Units = "s"))
+	float UseAnimationDuration = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Use Animation", meta = (ClampMin = "0.1", UIMax = "4"))
+	float UseAnimationPlayRate = 1.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Use Animation", meta = (ClampMin = "0", UIMax = "1", Units = "s"))
+	float UseAnimationBlendTime = 0.15f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Use Animation")
+	FName BodyAnimationSlot = FName("DefaultSlot");
 };

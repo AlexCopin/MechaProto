@@ -131,6 +131,11 @@ void AMechaProtoCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 			EnhancedInputComponent->BindAction(UseItemAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoUseItem);
 		}
 
+		if (ThrowItemAction)
+		{
+			EnhancedInputComponent->BindAction(ThrowItemAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoThrowItem);
+		}
+
 		if (StationFireAction)
 		{
 			EnhancedInputComponent->BindAction(StationFireAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoStationFireStart);
@@ -243,6 +248,14 @@ void AMechaProtoCharacter::DoUseItem()
 	if (!IsRagdolled() && !IsManningStation())
 	{
 		ItemHolder->RequestUse();
+	}
+}
+
+void AMechaProtoCharacter::DoThrowItem()
+{
+	if (!IsRagdolled() && !IsManningStation())
+	{
+		ItemHolder->RequestThrow();
 	}
 }
 

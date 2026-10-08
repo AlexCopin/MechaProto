@@ -37,8 +37,15 @@ public:
 
 	//Server, by UC_ItemHolder
 	void Grab(ACharacter* NewHolder);
-	void Release(const FVector& Location, const FVector& Velocity);
+	//Thrower: thrown (slaps the first player hit when bThrowSlapsPlayers), null for a simple drop
+	void Release(const FVector& Location, const FVector& Velocity, ACharacter* Thrower = nullptr);
 	void Use(ACharacter* User);
+
+	//Local prediction of a use by the holder (cooldown), plays the animation: true if the use should be sent
+	bool PredictUse();
+
+	//Every machine: UseAnimation on the holder's body
+	void PlayUseAnimation();
 
 protected:
 	//Root, simulates physics when not held
@@ -54,6 +61,13 @@ protected:
 	UFUNCTION()
 	void OnRep_Holder();
 
+	//Uses on the server, the others play the animation from it
+	UPROPERTY(ReplicatedUsing = OnRep_UseCount)
+	uint8 UseCount = 0;
+
+	UFUNCTION()
+	void OnRep_UseCount();
+
 	//What the item does, server side, called with the use input while held
 	UFUNCTION(BlueprintNativeEvent, Category = "Item")
 	void OnUsed(ACharacter* User);
@@ -61,6 +75,17 @@ protected:
 	//Attached to the holder's hand (first person arms for the holder) or free with physics, on every machine
 	void ApplyHolder();
 
+	//Server: a thrown item slaps the first player it hits
+	UFUNCTION()
+	void OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
 	TWeakObjectPtr<ACharacter> AppliedHolder;
+	//Server, while the throw can slap
+	TWeakObjectPtr<ACharacter> ThrownBy;
+	FVector ThrowDirection = FVector::ZeroVector;
+	float ThrowTime = 0.f;
 	float LastUseTime = -100.f;
+	//Holder's machine: last predicted use (its own OnRep is skipped)
+	float LastPredictedUseTime = -100.f;
+	FTimerHandle UseAnimationTimer;
 };
