@@ -56,6 +56,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Break")
 	bool bDrawBreakDebug = true;
 
+	//-----Alerts on every player's HUD, the message is the plate's PlateName
+	//Each hit shows it or restarts its timer
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Alerts")
+	bool bAlertWhenDamaged = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Alerts")
+	FText DamageAlertTitle = FText::FromString(TEXT("Hull under attack"));
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Alerts", meta = (ClampMin = "0.5", UIMax = "20", Units = "s"))
+	float DamageAlertDuration = 4.f;
+
+	//Stays until the plate is repaired
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Alerts")
+	FText BreachAlertTitle = FText::FromString(TEXT("HULL BREACH"));
+
 	//-----Debug
 	//Health above the plate once damaged, "HOLE" when broken, on every machine
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Debug")

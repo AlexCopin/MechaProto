@@ -10,7 +10,6 @@
 class UInputAction;
 class UInputMappingContext;
 class UUserWidget;
-class UMP_MainMenuWidget;
 class UPDA_Voice;
 
 /**
@@ -49,18 +48,6 @@ protected:
 	/** If true, the player will use UMG touch controls even if not playing on mobile platforms */
 	UPROPERTY(EditAnywhere, Config, Category = "Input|Touch Controls")
 	bool bForceTouchControls = false;
-
-	//Host / Join menu, only shown when playing standalone (not in PIE listen/client)
-	UPROPERTY(EditAnywhere, Category="Online")
-	TSubclassOf<UMP_MainMenuWidget> MainMenuWidgetClass;
-
-	UPROPERTY(EditAnywhere, Category="Online")
-	bool bShowMainMenuInStandalone = true;
-
-	UPROPERTY()
-	TObjectPtr<UMP_MainMenuWidget> MainMenuWidget;
-
-	void ShowMainMenu();
 
 	//-----Voice
 	UPROPERTY(EditAnywhere, Category="Voice")

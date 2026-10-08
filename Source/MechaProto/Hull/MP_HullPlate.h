@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "MP_Alert.h"
+#include "MP_AlertSource.h"
 #include "MP_HullPlate.generated.h"
 
 class UArrowComponent;
@@ -15,7 +17,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHullPlateBrokenChanged, AMP_Hull
 //Breakable plate closing an opening of the mech's hull: the arrow (actor forward) points outside, the actor origin is the bottom center of the opening
 //Enemies crash on it (server); at 0 health it disappears and leaves a hole the small ones go through to hunt the players inside
 UCLASS()
-class MECHAPROTO_API AMP_HullPlate : public AActor
+class MECHAPROTO_API AMP_HullPlate : public AActor, public IMP_AlertSource
 {
 	GENERATED_BODY()
 
@@ -33,6 +35,7 @@ public:
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void ShowCurrentAlerts(AMP_HUD& HUD) override;
 
 	//Server: an enemy hits it
 	void ReceiveHullDamage(float Damage, AActor* Attacker);
@@ -71,6 +74,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hull")
 	TObjectPtr<UPDA_HullPlate> PlateData;
 
+	//Shown in the alerts (North 2, Left leg...)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hull")
+	FText PlateName;
+
 	//Opening closed by the plate, before the actor scale
 	UPROPERTY(EditAnywhere, Category = "Hull", meta = (ClampMin = "20", UIMax = "1000", Units = "cm"))
 	float Width = 140.f;
@@ -97,6 +104,8 @@ protected:
 	void UpdateMeshSize();
 	void UpdateColor();
 	void PlayBreakEffects();
+	//bBreach: lasting critical alert, otherwise the timed damage one
+	FMP_Alert MakeAlert(bool bBreach);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> MaterialInstance;

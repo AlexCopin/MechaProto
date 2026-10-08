@@ -20,6 +20,7 @@ class UC_CharacterMovement;
 class UC_Interactor;
 class UC_StationUser;
 class UC_ItemHolder;
+class UC_PlayerStats;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -61,6 +62,10 @@ class AMechaProtoCharacter : public ACharacter
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UC_ItemHolder> ItemHolder;
+
+	//Health and stamina, shown by the HUD
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UC_PlayerStats> PlayerStats;
 
 	//This player's voice comes from the head, it follows the body when ragdolled
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
@@ -239,6 +244,7 @@ public:
 	UC_Interactor* GetInteractor() const { return Interactor; }
 	UC_StationUser* GetStationUser() const { return StationUser; }
 	UC_ItemHolder* GetItemHolder() const { return ItemHolder; }
+	UC_PlayerStats* GetPlayerStats() const { return PlayerStats; }
 
 };
 

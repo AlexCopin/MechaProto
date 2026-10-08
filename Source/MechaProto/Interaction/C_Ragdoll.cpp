@@ -136,6 +136,17 @@ void UC_Ragdoll::StopRagdoll()
 	GetOwner()->ForceNetUpdate();
 }
 
+float UC_Ragdoll::GetStunPercent() const
+{
+	const UPDA_Interaction* Data = GetInteractionData();
+	if (bRagdollApplied)
+	{
+		const float Elapsed = GetWorld()->GetTimeSeconds() - RagdollStartTime;
+		return Data->RagdollDuration > 0.f ? FMath::Clamp(1.f - Elapsed / Data->RagdollDuration, 0.f, 1.f) : 1.f;
+	}
+	return Data->SlapsToRagdoll > 0 ? FMath::Clamp(static_cast<float>(SlapCount) / Data->SlapsToRagdoll, 0.f, 1.f) : 0.f;
+}
+
 void UC_Ragdoll::OnRep_SlapCount()
 {
 	OnSlapCountChanged.Broadcast(SlapCount);
@@ -215,6 +226,7 @@ void UC_Ragdoll::EnterRagdoll()
 	}
 
 	bRagdollApplied = true;
+	RagdollStartTime = GetWorld()->GetTimeSeconds();
 
 	//Stand up first (slide), the crouch moves the mesh and the ragdoll caches its offset
 	if (Character->bIsCrouched && Character->GetCharacterMovement())

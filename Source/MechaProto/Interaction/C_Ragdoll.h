@@ -55,6 +55,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Ragdoll")
 	int32 GetSlapCount() const { return SlapCount; }
 
+	//0-1 for the HUD: slaps toward the ragdoll, then the ragdoll time left while ragdolled
+	UFUNCTION(BlueprintPure, Category = "Ragdoll")
+	float GetStunPercent() const;
+
 	UFUNCTION(BlueprintPure, Category = "Ragdoll")
 	const UPDA_Interaction* GetInteractionData() const;
 
@@ -107,6 +111,8 @@ protected:
 
 	//State actually applied on this machine
 	bool bRagdollApplied = false;
+	//Local time the ragdoll started on this machine
+	float RagdollStartTime = 0.f;
 	FTransform MeshRelativeTransform;
 	FName MeshCollisionProfile;
 	FTimerHandle SlapResetTimer;

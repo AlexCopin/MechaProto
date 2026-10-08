@@ -19,6 +19,7 @@
 #include "C_Interactor.h"
 #include "C_StationUser.h"
 #include "C_ItemHolder.h"
+#include "C_PlayerStats.h"
 #include "PDA_Interaction.h"
 #include "MP_WeaponStation.h"
 #include "MP_Ladder.h"
@@ -80,6 +81,7 @@ AMechaProtoCharacter::AMechaProtoCharacter()
 	Interactor = CreateDefaultSubobject<UC_Interactor>(TEXT("Interactor"));
 	StationUser = CreateDefaultSubobject<UC_StationUser>(TEXT("Station User"));
 	ItemHolder = CreateDefaultSubobject<UC_ItemHolder>(TEXT("Item Holder"));
+	PlayerStats = CreateDefaultSubobject<UC_PlayerStats>(TEXT("Player Stats"));
 
 	ProximityVoice = CreateDefaultSubobject<UC_ProximityVoice>(TEXT("Proximity Voice"));
 	ProximityVoice->SetupAttachment(GetMesh(), FName("head"));

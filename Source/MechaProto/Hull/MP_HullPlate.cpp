@@ -1,5 +1,6 @@
 #include "MP_HullPlate.h"
 #include "PDA_HullPlate.h"
+#include "MP_HUD.h"
 #include "Components/ArrowComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
@@ -9,6 +10,19 @@
 #include "Net/UnrealNetwork.h"
 #include "NiagaraFunctionLibrary.h"
 #include "UObject/ConstructorHelpers.h"
+
+namespace
+{
+	FName DamageAlertKey()
+	{
+		return FName(TEXT("HullDamage"));
+	}
+
+	FName BreachAlertKey()
+	{
+		return FName(TEXT("HullBreach"));
+	}
+}
 
 AMP_HullPlate::AMP_HullPlate()
 {
@@ -188,11 +202,18 @@ void AMP_HullPlate::Repair(float Amount)
 
 void AMP_HullPlate::OnRep_Health(float OldHealth)
 {
+	const UPDA_HullPlate* Data = GetPlateData();
 	if (Health < OldHealth)
 	{
-		HitFlashTimeLeft = GetPlateData()->HitFlashDuration;
+		HitFlashTimeLeft = Data->HitFlashDuration;
 	}
 	UpdateColor();
+
+	//Not for the first replicated value (old 0) nor the breaking hit (the breach alert follows)
+	if (Data->bAlertWhenDamaged && Health < OldHealth && OldHealth > 0.f && Health > 0.f)
+	{
+		AMP_HUD::RaiseAlert(this, MakeAlert(false));
+	}
 	OnHealthChanged.Broadcast(this, Health);
 }
 
@@ -203,6 +224,12 @@ void AMP_HullPlate::OnRep_Broken()
 	if (bBroken)
 	{
 		PlayBreakEffects();
+		AMP_HUD::ClearAlert(this, DamageAlertKey(), this);
+		AMP_HUD::RaiseAlert(this, MakeAlert(true));
+	}
+	else
+	{
+		AMP_HUD::ClearAlert(this, BreachAlertKey(), this);
 	}
 	OnBrokenChanged.Broadcast(this, bBroken);
 }
@@ -227,6 +254,27 @@ void AMP_HullPlate::PlayBreakEffects()
 	if (Data->bDrawBreakDebug)
 	{
 		DrawDebugBox(GetWorld(), Center, FVector(GetThickness(), GetWidth(), GetHeight()) * 0.5f, GetActorQuat(), FColor::Orange, false, 1.f, 0, 4.f);
+	}
+}
+
+FMP_Alert AMP_HullPlate::MakeAlert(bool bBreach)
+{
+	const UPDA_HullPlate* Data = GetPlateData();
+	FMP_Alert Alert;
+	Alert.Key = bBreach ? BreachAlertKey() : DamageAlertKey();
+	Alert.Source = this;
+	Alert.Title = bBreach ? Data->BreachAlertTitle : Data->DamageAlertTitle;
+	Alert.Message = PlateName;
+	Alert.Severity = bBreach ? EMP_AlertSeverity::Critical : EMP_AlertSeverity::Warning;
+	Alert.Duration = bBreach ? 0.f : Data->DamageAlertDuration;
+	return Alert;
+}
+
+void AMP_HullPlate::ShowCurrentAlerts(AMP_HUD& HUD)
+{
+	if (bBroken)
+	{
+		HUD.ShowAlert(MakeAlert(true));
 	}
 }
 
