@@ -129,6 +129,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "800", Units = "CentimetersPerSecond"))
 	float LadderClimbSpeed = 150.f;
 
+	//Climbing with the run held (up or down), uses the run's stamina (RunStaminaCost)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "800", Units = "CentimetersPerSecond"))
+	float LadderSprintSpeed = 320.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "2500", Units = "CentimetersPerSecond"))
 	float LadderSlideSpeed = 900.f;
 
@@ -143,6 +147,10 @@ public:
 	//How much the move input must point at the ladder to grab it (dot product)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", ClampMax = "1"))
 	float LadderGrabInputDot = 0.5f;
+
+	//How much the view must face the ladder too (dot product, 0.3 = within ~70 deg): walking past a ladder doesn't grab it
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "-1", ClampMax = "1"))
+	float LadderGrabViewDot = 0.3f;
 
 	//No grab right after leaving a ladder
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ladder", meta = (ClampMin = "0", UIMax = "2", Units = "s"))

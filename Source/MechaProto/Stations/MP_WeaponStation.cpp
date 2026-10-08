@@ -1,49 +1,15 @@
 #include "MP_WeaponStation.h"
-#include "MP_Breakable.h"
-#include "C_StationUser.h"
+#include "MechaProto.h"
 #include "MP_Projectile.h"
 #include "PDA_WeaponStation.h"
 #include "Camera/CameraComponent.h"
-#include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "Engine/StaticMesh.h"
 #include "GameFramework/Character.h"
-#include "GameFramework/CharacterMovementComponent.h"
-#include "GameFramework/SpringArmComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
-#include "UObject/ConstructorHelpers.h"
 
 AMP_WeaponStation::AMP_WeaponStation()
 {
-	PrimaryActorTick.bCanEverTick = true;
-	bReplicates = true;
-
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> PedestalMesh(TEXT("/Game/LevelPrototyping/Meshes/SM_Cylinder.SM_Cylinder"));
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> BlockMesh(TEXT("/Game/LevelPrototyping/Meshes/SM_ChamferCube.SM_ChamferCube"));
-
-	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
-	SetRootComponent(Root);
-
-	BaseMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Base Mesh"));
-	BaseMesh->SetupAttachment(Root);
-	BaseMesh->SetRelativeScale3D(FVector(0.8f, 0.8f, 1.2f));
-	if (PedestalMesh.Succeeded())
-	{
-		BaseMesh->SetStaticMesh(PedestalMesh.Object);
-	}
-
-	InteractVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("Interact Volume"));
-	InteractVolume->SetupAttachment(Root);
-	InteractVolume->SetRelativeLocation(FVector(0.f, 0.f, 130.f));
-	InteractVolume->SetBoxExtent(FVector(100.f, 100.f, 140.f));
-	InteractVolume->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	InteractVolume->SetCollisionObjectType(ECC_WorldDynamic);
-	InteractVolume->SetCollisionResponseToAllChannels(ECR_Ignore);
-	InteractVolume->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-	InteractVolume->SetGenerateOverlapEvents(false);
-	InteractVolume->SetCanEverAffectNavigation(false);
-
 	TurretYaw = CreateDefaultSubobject<USceneComponent>(TEXT("Turret Yaw"));
 	TurretYaw->SetupAttachment(Root);
 	TurretYaw->SetRelativeLocation(FVector(0.f, 0.f, 140.f));
@@ -51,28 +17,9 @@ AMP_WeaponStation::AMP_WeaponStation()
 	TurretPitch = CreateDefaultSubobject<USceneComponent>(TEXT("Turret Pitch"));
 	TurretPitch->SetupAttachment(TurretYaw);
 
-	//Capsule center of a sitting user, floating 95 cm behind the gun and tilting with it: the gun is at the seated shoulders (95 cm above the feet, capsule half height 96)
-	Seat = CreateDefaultSubobject<USceneComponent>(TEXT("Seat"));
+	//Floating 95 cm behind the gun and tilting with it: the gun is at the seated shoulders
 	Seat->SetupAttachment(TurretPitch);
 	Seat->SetRelativeLocation(FVector(-95.f, 0.f, 0.f));
-
-	//The bench sit pose puts the pelvis 53 cm up and 33 cm behind the capsule center (13 in the pose + 20 mesh offset)
-	SeatMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Seat Mesh"));
-	SeatMesh->SetupAttachment(Seat);
-	SeatMesh->SetRelativeLocation(FVector(-33.f, 0.f, -74.f));
-	SeatMesh->SetRelativeScale3D(FVector(0.45f, 0.45f, 0.44f));
-	SeatMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-	BackrestMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Backrest Mesh"));
-	BackrestMesh->SetupAttachment(Seat);
-	BackrestMesh->SetRelativeLocation(FVector(-59.f, 0.f, -22.f));
-	BackrestMesh->SetRelativeScale3D(FVector(0.08f, 0.45f, 0.6f));
-	BackrestMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	if (BlockMesh.Succeeded())
-	{
-		SeatMesh->SetStaticMesh(BlockMesh.Object);
-		BackrestMesh->SetStaticMesh(BlockMesh.Object);
-	}
 
 	//Template weapon meshes point along +Y
 	GunMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Gun Mesh"));
@@ -84,23 +31,47 @@ AMP_WeaponStation::AMP_WeaponStation()
 	Muzzle = CreateDefaultSubobject<USceneComponent>(TEXT("Muzzle"));
 	Muzzle->SetupAttachment(TurretPitch);
 	Muzzle->SetRelativeLocation(FVector(170.f, 0.f, 10.f));
+}
 
-	CameraArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("Camera Arm"));
-	CameraArm->SetupAttachment(Root);
-	CameraArm->SetRelativeLocation(FVector(0.f, 0.f, 220.f));
-	CameraArm->SetUsingAbsoluteRotation(true);
-	CameraArm->TargetArmLength = 500.f;
-	CameraArm->bDoCollisionTest = true;
+void AMP_WeaponStation::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	ApplyMount();
+}
 
-	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
-	Camera->SetupAttachment(CameraArm, USpringArmComponent::SocketName);
+void AMP_WeaponStation::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+	ApplyMount();
+}
+
+void AMP_WeaponStation::ApplyMount()
+{
+	TurretYaw->SetRelativeLocation(TurretOffset);
+	if (bSeatOnTurret)
+	{
+		return;
+	}
+
+	//Seated at the station with a console in front, the gun is elsewhere
+	if (Seat->GetAttachParent() != Root)
+	{
+		Seat->AttachToComponent(Root, FAttachmentTransformRules::KeepRelativeTransform);
+	}
+	Seat->SetRelativeLocationAndRotation(FVector(0.f, 0.f, 140.f), FRotator::ZeroRotator);
+	BaseMesh->SetRelativeLocation(FVector(75.f, 0.f, 0.f));
+	BaseMesh->SetRelativeScale3D(FVector(0.4f, 0.9f, 0.9f));
+}
+
+FVector AMP_WeaponStation::GetCameraPivot() const
+{
+	return TurretYaw->GetRelativeLocation() + GetStationData()->CameraOffset;
 }
 
 void AMP_WeaponStation::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(AMP_WeaponStation, User);
 	DOREPLIFETIME(AMP_WeaponStation, ReplicatedAim);
 	DOREPLIFETIME(AMP_WeaponStation, FireCounter);
 }
@@ -114,67 +85,21 @@ const UPDA_WeaponStation* AMP_WeaponStation::GetStationData() const
 	return GetDefault<UPDA_WeaponStation>();
 }
 
+const UPDA_Station* AMP_WeaponStation::GetBaseStationData() const
+{
+	return GetStationData();
+}
+
 void AMP_WeaponStation::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	const UPDA_WeaponStation* Data = GetStationData();
-	CameraArm->TargetArmLength = Data->CameraDistance;
-
-	if (IsLocallyUsed())
+	//The user's turret follows its aim (UC_StationUser calls AimAt), the other players smooth toward the replicated one
+	if (!IsLocallyUsed())
 	{
-		//The user's mouse drives the camera, the turret follows the aim (UC_StationUser calls AimAt)
-		CameraArm->SetWorldRotation(User->GetControlRotation());
-		return;
+		TurretAim = FMath::RInterpTo(TurretAim, ReplicatedAim, DeltaSeconds, GetStationData()->TurretTurnSpeed);
+		ApplyTurretRotation(TurretAim);
 	}
-
-	//Other players: smooth toward the replicated aim
-	TurretAim = FMath::RInterpTo(TurretAim, ReplicatedAim, DeltaSeconds, Data->TurretTurnSpeed);
-	ApplyTurretRotation(TurretAim);
-}
-
-bool AMP_WeaponStation::CanInteract(const ACharacter* InUser) const
-{
-	if (!InUser || (User && User != InUser))
-	{
-		return false;
-	}
-	//Taken standing on the ground only (not sliding, on a ladder, falling or ragdolled), left any time
-	return User == InUser || (InUser->GetCharacterMovement() && InUser->GetCharacterMovement()->IsMovingOnGround());
-}
-
-void AMP_WeaponStation::Interact(ACharacter* InUser)
-{
-	UC_StationUser* StationUser = InUser ? InUser->FindComponentByClass<UC_StationUser>() : nullptr;
-	if (!StationUser)
-	{
-		return;
-	}
-
-	if (User == InUser)
-	{
-		StationUser->LeaveStation();
-	}
-	else if (!User)
-	{
-		StationUser->EnterStation(this);
-	}
-}
-
-FText AMP_WeaponStation::GetInteractionText(const ACharacter* InUser) const
-{
-	return FText::Format(NSLOCTEXT("Station", "Use", "Use {0}"), GetStationData()->StationName);
-}
-
-void AMP_WeaponStation::SetUser(ACharacter* NewUser)
-{
-	User = NewUser;
-	ForceNetUpdate();
-}
-
-bool AMP_WeaponStation::IsLocallyUsed() const
-{
-	return User && User->IsLocallyControlled();
 }
 
 FVector AMP_WeaponStation::ComputeAimPoint() const
@@ -182,10 +107,11 @@ FVector AMP_WeaponStation::ComputeAimPoint() const
 	const FVector Start = Camera->GetComponentLocation();
 	const FVector End = Start + Camera->GetForwardVector() * GetStationData()->AimDistance;
 
+	//The projectile channel: through the mech's own walls (the camera is often outside), stops on enemies and the ground
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(StationAim), false, this);
 	Params.AddIgnoredActor(User);
 	FHitResult Hit;
-	return GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params) ? Hit.ImpactPoint : End;
+	return GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Projectile, Params) ? Hit.ImpactPoint : End;
 }
 
 void AMP_WeaponStation::AimAt(const FVector& AimPoint)
@@ -208,18 +134,6 @@ void AMP_WeaponStation::ApplyTurretRotation(const FRotator& WorldAim)
 bool AMP_WeaponStation::IsFireReady(float LastFireTime) const
 {
 	return !IsDisabled() && GetWorld()->GetTimeSeconds() - LastFireTime >= GetStationData()->FireCooldown;
-}
-
-bool AMP_WeaponStation::IsDisabled() const
-{
-	for (const AMP_Breakable* System : RequiredSystems)
-	{
-		if (System && System->IsBroken())
-		{
-			return true;
-		}
-	}
-	return false;
 }
 
 void AMP_WeaponStation::ServerFire(const FVector& AimPoint)

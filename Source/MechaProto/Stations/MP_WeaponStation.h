@@ -1,21 +1,15 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
-#include "MP_Interactable.h"
+#include "MP_Station.h"
 #include "MP_WeaponStation.generated.h"
 
-class ACharacter;
-class AMP_Breakable;
-class UBoxComponent;
-class UCameraComponent;
 class UPDA_WeaponStation;
-class USpringArmComponent;
-class UStaticMeshComponent;
 
-//Weapon station a player mans with interact: third person camera around it, fires projectiles at the aim (for enemies, never hits players)
+//Weapon station a player mans with interact, fires projectiles at the aim (for enemies, never hits players)
+//Open turret: seated behind the gun, turning with it. Arm gun (bSeatOnTurret off): seated at the station, the turret is out of the hull at TurretOffset (the mech's arms shoot)
 UCLASS()
-class MECHAPROTO_API AMP_WeaponStation : public AActor, public IMP_Interactable
+class MECHAPROTO_API AMP_WeaponStation : public AMP_Station
 {
 	GENERATED_BODY()
 
@@ -24,35 +18,22 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void Tick(float DeltaSeconds) override;
-
-	//-----IMP_Interactable
-	virtual bool CanInteract(const ACharacter* User) const override;
-	virtual void Interact(ACharacter* User) override;
-	virtual FText GetInteractionText(const ACharacter* User) const override;
+	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostInitializeComponents() override;
+	virtual const UPDA_Station* GetBaseStationData() const override;
+	//From the turret: the camera follows the gun (UPDA_Station::CameraOffset is from the turret here)
+	virtual FVector GetCameraPivot() const override;
 
 	UFUNCTION(BlueprintPure, Category = "Station")
 	const UPDA_WeaponStation* GetStationData() const;
 
-	UFUNCTION(BlueprintPure, Category = "Station")
-	ACharacter* GetUser() const { return User; }
-
-	//Where the user's capsule goes: behind the gun, turning and tilting with it
-	USceneComponent* GetSeat() const { return Seat; }
-
-	//Server, called by UC_StationUser
-	void SetUser(ACharacter* NewUser);
-
-	//Where the user's camera looks (trace from the station camera), local
+	//Where the user's camera looks: what a projectile would hit (the mech and players are ignored), local
 	FVector ComputeAimPoint() const;
 
 	//Turns the turret toward a point: local for the user, replicated to the others by the server
 	void AimAt(const FVector& AimPoint);
 
 	bool IsFireReady(float LastFireTime) const;
-
-	//A required system is broken: can't fire
-	UFUNCTION(BlueprintPure, Category = "Station")
-	bool IsDisabled() const;
 
 	//Server: spawns a projectile from the muzzle toward the aim point
 	void ServerFire(const FVector& AimPoint);
@@ -69,38 +50,13 @@ public:
 	void OnExploded(FVector Center, float Radius);
 
 protected:
-	//Mech systems this station needs (engine, rotor...): it can't fire while one of them is broken
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Station")
-	TArray<TObjectPtr<AMP_Breakable>> RequiredSystems;
-
-	UPROPERTY(VisibleAnywhere, Category = "Components")
-	TObjectPtr<USceneComponent> Root;
-
-	UPROPERTY(VisibleAnywhere, Category = "Components")
-	TObjectPtr<UStaticMeshComponent> BaseMesh;
-
-	//Big box only the interact trace sees (Visibility), so the station is easy to target
-	UPROPERTY(VisibleAnywhere, Category = "Components")
-	TObjectPtr<UBoxComponent> InteractVolume;
-
 	//Yaw part of the turret
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<USceneComponent> TurretYaw;
 
-	//Pitch part, carries the gun and the muzzle
+	//Pitch part, carries the gun, the muzzle and the seat (always behind the gun, tilting with it)
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<USceneComponent> TurretPitch;
-
-	//User's capsule center, on the pitch part: always behind the gun, turning and tilting with it. Moved in the BP to fit the gun
-	UPROPERTY(VisibleAnywhere, Category = "Components")
-	TObjectPtr<USceneComponent> Seat;
-
-	//Visual only, under the sitting pose's pelvis
-	UPROPERTY(VisibleAnywhere, Category = "Components")
-	TObjectPtr<UStaticMeshComponent> SeatMesh;
-
-	UPROPERTY(VisibleAnywhere, Category = "Components")
-	TObjectPtr<UStaticMeshComponent> BackrestMesh;
 
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<UStaticMeshComponent> GunMesh;
@@ -109,17 +65,19 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<USceneComponent> Muzzle;
 
-	UPROPERTY(VisibleAnywhere, Category = "Components")
-	TObjectPtr<USpringArmComponent> CameraArm;
-
-	UPROPERTY(VisibleAnywhere, Category = "Components")
-	TObjectPtr<UCameraComponent> Camera;
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Station")
 	TObjectPtr<UPDA_WeaponStation> StationData;
 
-	UPROPERTY(Replicated)
-	TObjectPtr<ACharacter> User;
+	//Turret (gun, muzzle) from the station's origin: out of the hull for an arm gun
+	UPROPERTY(EditAnywhere, Category = "Station")
+	FVector TurretOffset = FVector(0.f, 0.f, 140.f);
+
+	//The user sits behind the gun and turns with it. Off: seated at the station (a console in front), aiming the remote turret
+	UPROPERTY(EditAnywhere, Category = "Station")
+	bool bSeatOnTurret = true;
+
+	//Turret, seat and base placement from TurretOffset / bSeatOnTurret
+	void ApplyMount();
 
 	//Turret aim for the other players
 	UPROPERTY(Replicated)
@@ -132,7 +90,6 @@ protected:
 	UFUNCTION()
 	void OnRep_FireCounter();
 
-	bool IsLocallyUsed() const;
 	void ApplyTurretRotation(const FRotator& WorldAim);
 
 	FRotator TurretAim = FRotator::ZeroRotator;

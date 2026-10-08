@@ -65,7 +65,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Run")
 	void SetWantsToRun(bool bInWantsToRun);
 
-	//Running this move: walking with the run held, moving forward, stamina left. Server and owning client only
+	//Running this move: walking forward or climbing a ladder with the run held, stamina left. Server and owning client only
 	UFUNCTION(BlueprintPure, Category = "Run")
 	bool IsRunning() const { return bIsRunning; }
 
@@ -122,6 +122,9 @@ protected:
 	FVector GetViewInput() const;
 	//-1 down to 1 up, from the move input and the view
 	float GetLadderClimbInput(const AMP_Ladder* Ladder) const;
+	//The climb input, or the held input's direction while it doesn't change
+	float GetLadderVerticalInput(const AMP_Ladder* Ladder) const;
+	bool IsLadderInputHeld() const;
 
 	TWeakObjectPtr<AMP_Ladder> CurrentLadder;
 	//Input held when grabbing (view space) and its climb direction, kept until the input changes

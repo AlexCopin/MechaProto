@@ -21,6 +21,7 @@ class UC_Interactor;
 class UC_StationUser;
 class UC_ItemHolder;
 class UC_PlayerStats;
+class AMP_Station;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -201,6 +202,13 @@ protected:
 
 	UFUNCTION()
 	virtual void OnRagdollChanged(bool bRagdolled);
+
+	UFUNCTION()
+	void OnStationChanged(AMP_Station* Station);
+
+	//Ragdolled or seated: the owner sees the body from a third person camera instead of the first person arms
+	void UpdateBodyView();
+	bool bBodyViewApplied = false;
 
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;

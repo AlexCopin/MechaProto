@@ -42,6 +42,7 @@ public class MechaProto : ModuleRules
 			"MechaProto/Items",
 			"MechaProto/Enemies",
 			"MechaProto/Hull",
+			"MechaProto/Mech",
 			"MechaProto/UI",
 			"MechaProto/Repair",
 			"MechaProto/Variant_Horror",

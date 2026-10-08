@@ -31,6 +31,9 @@ public:
 	//Point in front of the ladder at the given height, Distance from the front of the rungs
 	FVector GetClimbLocation(float Z, float Distance) const;
 
+	//Movement base of the climbers: they move with the ladder (inside the walking mech)
+	UPrimitiveComponent* GetBaseComponent() const;
+
 protected:
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<USceneComponent> Root;

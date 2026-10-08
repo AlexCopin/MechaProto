@@ -1,4 +1,5 @@
 #include "MP_Breakable.h"
+#include "MechaProto.h"
 #include "C_ItemHolder.h"
 #include "MP_HUD.h"
 #include "MP_Item.h"
@@ -47,6 +48,8 @@ AMP_Breakable::AMP_Breakable()
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	Mesh->SetupAttachment(Root);
 	Mesh->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
+	//Inside the mech: its own weapons fire through it
+	Mesh->SetCollisionResponseToChannel(ECC_Projectile, ECR_Ignore);
 	Mesh->SetCanEverAffectNavigation(false);
 	if (ShapeMaterial.Succeeded())
 	{

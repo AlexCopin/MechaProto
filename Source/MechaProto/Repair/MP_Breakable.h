@@ -16,7 +16,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnBreakableChanged, AMP_Breakable*
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnBreakableRepairHit, AMP_Breakable*, Breakable, int32, RepairCount);
 
 //A system inside the mech (engine, pipe, rotor...) that breaks down (AMP_BreakdownManager) and is repaired by hitting it with its tool in hand
-//Its mesh is set in the BP. Other actors can depend on it (AMP_WeaponStation::RequiredSystems)
+//Its mesh is set in the BP. Other actors can depend on it (AMP_Station::RequiredSystems)
 UCLASS()
 class MECHAPROTO_API AMP_Breakable : public AActor, public IMP_Interactable, public IMP_AlertSource
 {

@@ -186,6 +186,11 @@ float AMP_Ladder::GetTopZ() const
 	return GetActorTransform().TransformPosition(FVector(0.f, 0.f, ClimbBounds.Max.Z)).Z;
 }
 
+UPrimitiveComponent* AMP_Ladder::GetBaseComponent() const
+{
+	return ClimbVolume;
+}
+
 FVector AMP_Ladder::GetClimbLocation(float Z, float Distance) const
 {
 	const FVector Face = GetActorTransform().TransformPosition(FVector(ClimbBounds.Max.X, ClimbBounds.GetCenter().Y, 0.f));

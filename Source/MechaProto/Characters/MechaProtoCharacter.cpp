@@ -93,6 +93,7 @@ void AMechaProtoCharacter::PostInitializeComponents()
 
 	SlapComponent->OnSlapSwing.AddDynamic(this, &AMechaProtoCharacter::OnSlapSwing);
 	RagdollComponent->OnRagdollChanged.AddDynamic(this, &AMechaProtoCharacter::OnRagdollChanged);
+	StationUser->OnStationChanged.AddDynamic(this, &AMechaProtoCharacter::OnStationChanged);
 }
 
 void AMechaProtoCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -193,7 +194,13 @@ void AMechaProtoCharacter::DoAim(float Yaw, float Pitch)
 
 void AMechaProtoCharacter::DoMove(float Right, float Forward)
 {
-	if (GetController() && !IsRagdolled() && !IsManningStation())
+	//Seated: the station uses it (the pilot station drives the mech)
+	if (IsManningStation())
+	{
+		StationUser->AddDriveInput(Right, Forward);
+		return;
+	}
+	if (GetController() && !IsRagdolled())
 	{
 		//Relative to the view: on a ladder the body faces the rungs while the camera looks freely
 		const FRotator ViewYaw(0.f, GetControlRotation().Yaw, 0.f);
@@ -307,27 +314,49 @@ void AMechaProtoCharacter::OnRagdollChanged(bool bRagdolled)
 		}
 	}
 
-	USkeletalMeshComponent* BodyMesh = GetMesh();
+	UpdateBodyView();
 	if (bRagdolled)
 	{
-		//Owner sees his own body from the ragdoll camera
+		//The ragdoll profile blocks projectiles, a player body on the floor still isn't a target
+		GetMesh()->SetCollisionResponseToChannel(ECC_Projectile, ECR_Ignore);
+		FirstPersonCameraComponent->Deactivate();
+		RagdollCamera->Activate();
+	}
+	else
+	{
+		RagdollCamera->Deactivate();
+		FirstPersonCameraComponent->Activate();
+	}
+}
+
+void AMechaProtoCharacter::OnStationChanged(AMP_Station* Station)
+{
+	UpdateBodyView();
+}
+
+void AMechaProtoCharacter::UpdateBodyView()
+{
+	const bool bShowBody = IsRagdolled() || IsManningStation();
+	if (bShowBody == bBodyViewApplied)
+	{
+		return;
+	}
+	bBodyViewApplied = bShowBody;
+
+	USkeletalMeshComponent* BodyMesh = GetMesh();
+	if (bShowBody)
+	{
 		bMeshOwnerNoSee = BodyMesh->bOwnerNoSee;
 		MeshFirstPersonType = BodyMesh->FirstPersonPrimitiveType;
 		BodyMesh->SetFirstPersonPrimitiveType(EFirstPersonPrimitiveType::None);
 		BodyMesh->SetOwnerNoSee(false);
-		//The ragdoll profile blocks projectiles, a player body on the floor still isn't a target
-		BodyMesh->SetCollisionResponseToChannel(ECC_Projectile, ECR_Ignore);
 		FirstPersonMesh->SetVisibility(false, true);
-		FirstPersonCameraComponent->Deactivate();
-		RagdollCamera->Activate();
 	}
 	else
 	{
 		BodyMesh->SetFirstPersonPrimitiveType(MeshFirstPersonType);
 		BodyMesh->SetOwnerNoSee(bMeshOwnerNoSee);
 		FirstPersonMesh->SetVisibility(true, true);
-		RagdollCamera->Deactivate();
-		FirstPersonCameraComponent->Activate();
 	}
 }
 

@@ -1,25 +1,21 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DataAsset.h"
+#include "PDA_Station.h"
 #include "PDA_WeaponStation.generated.h"
 
-class UAnimSequenceBase;
 class UNiagaraSystem;
 class USoundBase;
 class UStaticMesh;
 
 //One weapon station type (missile launcher, gatling...), read live so it can be edited during PIE. Weapons are for enemies, players are never hit
+//Name, camera and sitting pose come from UPDA_Station
 UCLASS(BlueprintType)
-class MECHAPROTO_API UPDA_WeaponStation : public UPrimaryDataAsset
+class MECHAPROTO_API UPDA_WeaponStation : public UPDA_Station
 {
 	GENERATED_BODY()
 
 public:
-	//Shown in the interact prompt
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Station")
-	FText StationName = FText::FromString(TEXT("Weapon"));
-
 	//-----Fire
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fire", meta = (ClampMin = "0.02", UIMax = "5", Units = "s"))
 	float FireCooldown = 0.5f;
@@ -89,25 +85,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Explosion")
 	bool bDrawExplosionDebug = true;
 
-	//-----Aim & camera (third person around the station)
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (ClampMin = "100", UIMax = "2000", Units = "cm"))
-	float CameraDistance = 500.f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (ClampMin = "0", UIMax = "2", Units = "s"))
-	float CameraBlendTime = 0.3f;
-
+	//-----Aim (from the station camera, what a projectile would hit: the mech and the players are ignored)
 	//How far the aim trace looks for a target
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (ClampMin = "1000", UIMax = "100000", Units = "cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Aim", meta = (ClampMin = "1000", UIMax = "100000", Units = "cm"))
 	float AimDistance = 20000.f;
 
 	//Turret follow speed for the other players' view
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (ClampMin = "1", UIMax = "30"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Aim", meta = (ClampMin = "1", UIMax = "30"))
 	float TurretTurnSpeed = 12.f;
-
-	//-----User animation (looped on the body while manning)
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Animation")
-	TObjectPtr<UAnimSequenceBase> ManningAnimation;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Animation")
-	FName BodyAnimationSlot = FName("DefaultSlot");
 };

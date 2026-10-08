@@ -1,4 +1,5 @@
 #include "C_StationUser.h"
+#include "MP_PilotStation.h"
 #include "MP_WeaponStation.h"
 #include "C_Ragdoll.h"
 #include "PDA_WeaponStation.h"
@@ -36,7 +37,7 @@ void UC_StationUser::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void UC_StationUser::EnterStation(AMP_WeaponStation* NewStation)
+void UC_StationUser::EnterStation(AMP_Station* NewStation)
 {
 	ACharacter* Character = Cast<ACharacter>(GetOwner());
 	if (!Character || !Character->HasAuthority() || !NewStation || Station == NewStation)
@@ -73,6 +74,11 @@ void UC_StationUser::SetFiring(bool bInFiring)
 	}
 }
 
+void UC_StationUser::AddDriveInput(float Right, float Forward)
+{
+	PendingDriveInput += FVector2D(Right, Forward);
+}
+
 void UC_StationUser::OnRep_Station()
 {
 	ApplyStation();
@@ -80,13 +86,16 @@ void UC_StationUser::OnRep_Station()
 
 void UC_StationUser::ApplyStation()
 {
-	AMP_WeaponStation* OldStation = AppliedStation.Get();
+	AMP_Station* OldStation = AppliedStation.Get();
 	if (OldStation == Station)
 	{
 		return;
 	}
 	AppliedStation = Station;
 	bFiring = false;
+	PendingDriveInput = FVector2D::ZeroVector;
+	SentDriveForward = 0;
+	SentDriveTurn = 0;
 
 	ApplySeat(Station, OldStation);
 	ApplyLocalView(Station, OldStation);
@@ -94,7 +103,7 @@ void UC_StationUser::ApplyStation()
 	OnStationChanged.Broadcast(Station);
 }
 
-void UC_StationUser::ApplyLocalView(AMP_WeaponStation* NewStation, AMP_WeaponStation* OldStation)
+void UC_StationUser::ApplyLocalView(AMP_Station* NewStation, AMP_Station* OldStation)
 {
 	APawn* Pawn = Cast<APawn>(GetOwner());
 	APlayerController* PlayerController = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
@@ -104,8 +113,8 @@ void UC_StationUser::ApplyLocalView(AMP_WeaponStation* NewStation, AMP_WeaponSta
 	}
 
 	//Third person camera of the station, back to the first person view when leaving
-	const AMP_WeaponStation* DataStation = NewStation ? NewStation : OldStation;
-	const float BlendTime = DataStation ? DataStation->GetStationData()->CameraBlendTime : 0.3f;
+	const AMP_Station* DataStation = NewStation ? NewStation : OldStation;
+	const float BlendTime = DataStation ? DataStation->GetBaseStationData()->CameraBlendTime : 0.3f;
 	PlayerController->SetViewTargetWithBlend(NewStation ? static_cast<AActor*>(NewStation) : Pawn, BlendTime);
 
 	UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer());
@@ -122,7 +131,7 @@ void UC_StationUser::ApplyLocalView(AMP_WeaponStation* NewStation, AMP_WeaponSta
 	}
 }
 
-void UC_StationUser::ApplySeat(AMP_WeaponStation* NewStation, AMP_WeaponStation* OldStation)
+void UC_StationUser::ApplySeat(AMP_Station* NewStation, AMP_Station* OldStation)
 {
 	ACharacter* Character = Cast<ACharacter>(GetOwner());
 	UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
@@ -135,7 +144,7 @@ void UC_StationUser::ApplySeat(AMP_WeaponStation* NewStation, AMP_WeaponStation*
 	{
 		Movement->StopMovementImmediately();
 		Movement->DisableMovement();
-		//The turret turns a bit later on the server (aim sent at 10 Hz): that offset is not a movement error to correct
+		//A turret turns a bit later on the server (aim sent at 10 Hz): that offset is not a movement error to correct
 		Movement->bIgnoreClientMovementErrorChecksAndCorrection = true;
 		Character->bUseControllerRotationYaw = false;
 		Character->AttachToComponent(NewStation->GetSeat(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
@@ -165,7 +174,7 @@ void UC_StationUser::ApplySeat(AMP_WeaponStation* NewStation, AMP_WeaponStation*
 	}
 }
 
-void UC_StationUser::ApplyManningPose(AMP_WeaponStation* NewStation)
+void UC_StationUser::ApplyManningPose(AMP_Station* NewStation)
 {
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
 	UAnimInstance* AnimInstance = Character && Character->GetMesh() ? Character->GetMesh()->GetAnimInstance() : nullptr;
@@ -180,7 +189,7 @@ void UC_StationUser::ApplyManningPose(AMP_WeaponStation* NewStation)
 		ManningMontage.Reset();
 	}
 
-	const UPDA_WeaponStation* Data = NewStation ? NewStation->GetStationData() : nullptr;
+	const UPDA_Station* Data = NewStation ? NewStation->GetBaseStationData() : nullptr;
 	if (!Data || !Data->ManningAnimation)
 	{
 		return;
@@ -202,12 +211,58 @@ void UC_StationUser::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 	const APawn* Pawn = Cast<APawn>(GetOwner());
 	if (!Station || !Pawn || !Pawn->IsLocallyControlled())
 	{
+		PendingDriveInput = FVector2D::ZeroVector;
 		return;
 	}
 
+	if (AMP_WeaponStation* Weapon = Cast<AMP_WeaponStation>(Station))
+	{
+		TickWeapon(Weapon, DeltaTime);
+	}
+	else if (AMP_PilotStation* Pilot = Cast<AMP_PilotStation>(Station))
+	{
+		TickPilot(Pilot);
+	}
+	PendingDriveInput = FVector2D::ZeroVector;
+}
+
+void UC_StationUser::TickPilot(AMP_PilotStation* Pilot)
+{
+	//The move input comes every frame while held (DoMove), none this frame = released
+	const int8 Forward = static_cast<int8>(FMath::RoundToInt(FMath::Clamp(PendingDriveInput.Y, -1.f, 1.f) * 127.f));
+	const int8 Turn = static_cast<int8>(FMath::RoundToInt(FMath::Clamp(PendingDriveInput.X, -1.f, 1.f) * 127.f));
+	if (Forward == SentDriveForward && Turn == SentDriveTurn)
+	{
+		return;
+	}
+	SentDriveForward = Forward;
+	SentDriveTurn = Turn;
+
+	if (GetOwner()->HasAuthority())
+	{
+		Pilot->SetDriveInput(FVector2D(Forward, Turn) / 127.f);
+	}
+	else
+	{
+		Server_SetDriveInput(Forward, Turn);
+	}
+}
+
+void UC_StationUser::Server_SetDriveInput_Implementation(int8 Forward, int8 Turn)
+{
+	if (AMP_PilotStation* Pilot = Cast<AMP_PilotStation>(Station))
+	{
+		Pilot->SetDriveInput(FVector2D(Forward, Turn) / 127.f);
+	}
+}
+
+void UC_StationUser::TickWeapon(AMP_WeaponStation* Weapon, float DeltaTime)
+{
+	const APawn* Pawn = Cast<APawn>(GetOwner());
+
 	//Aim is predicted locally, sent to the server for the other players' view
-	const FVector AimPoint = Station->ComputeAimPoint();
-	Station->AimAt(AimPoint);
+	const FVector AimPoint = Weapon->ComputeAimPoint();
+	Weapon->AimAt(AimPoint);
 	if (!Pawn->HasAuthority())
 	{
 		AimSendTimer -= DeltaTime;
@@ -218,28 +273,28 @@ void UC_StationUser::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 		}
 	}
 
-	const UPDA_WeaponStation* Data = Station->GetStationData();
-	if (bFiring && (Data->bAutomatic || !bFiredThisPress) && Station->IsFireReady(LastFireTime))
+	const UPDA_WeaponStation* Data = Weapon->GetStationData();
+	if (bFiring && (Data->bAutomatic || !bFiredThisPress) && Weapon->IsFireReady(LastFireTime))
 	{
 		LastFireTime = GetWorld()->GetTimeSeconds();
 		bFiredThisPress = true;
-		Station->PlayFireEffects();
+		Weapon->PlayFireEffects();
 		Server_Fire(AimPoint);
 	}
 }
 
 void UC_StationUser::Server_SetAim_Implementation(FVector_NetQuantize AimPoint)
 {
-	if (Station)
+	if (AMP_WeaponStation* Weapon = Cast<AMP_WeaponStation>(Station))
 	{
-		Station->AimAt(AimPoint);
+		Weapon->AimAt(AimPoint);
 	}
 }
 
 void UC_StationUser::Server_Fire_Implementation(FVector_NetQuantize AimPoint)
 {
-	if (Station)
+	if (AMP_WeaponStation* Weapon = Cast<AMP_WeaponStation>(Station))
 	{
-		Station->ServerFire(AimPoint);
+		Weapon->ServerFire(AimPoint);
 	}
 }

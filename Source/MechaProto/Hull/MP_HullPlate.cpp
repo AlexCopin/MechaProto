@@ -1,6 +1,7 @@
 #include "MP_HullPlate.h"
 #include "PDA_HullPlate.h"
 #include "MP_HUD.h"
+#include "MechaProto.h"
 #include "Components/ArrowComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
@@ -44,6 +45,8 @@ AMP_HullPlate::AMP_HullPlate()
 	PlateMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Plate Mesh"));
 	PlateMesh->SetupAttachment(Root);
 	PlateMesh->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
+	//The mech's own weapons fire through its hull
+	PlateMesh->SetCollisionResponseToChannel(ECC_Projectile, ECR_Ignore);
 	PlateMesh->SetCanEverAffectNavigation(false);
 	if (CubeMesh.Succeeded())
 	{
