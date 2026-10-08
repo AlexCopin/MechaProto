@@ -8,7 +8,7 @@
 class ACharacter;
 class UPDA_Interaction;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSlapCountChanged, int32, SlapCount);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSlapCountChanged, float, SlapCount);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSlapped, AActor*, Slapper, FVector, Direction);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRagdollChanged, bool, bRagdolled);
 
@@ -40,8 +40,8 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-	//Server only
-	void ReceiveSlap(AActor* Slapper, const FVector& Direction);
+	//Server only. Strength multiplies the pushes (knockback, ragdoll impulses), Value is what it counts toward the ragdoll (2 = two slaps)
+	void ReceiveSlap(AActor* Slapper, const FVector& Direction, float Strength = 1.f, float Value = 1.f);
 
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Ragdoll")
 	void StartRagdoll(FVector Impulse);
@@ -52,8 +52,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Ragdoll")
 	bool IsRagdolled() const { return RagdollState.bActive; }
 
+	//Sum of the slap values received, ragdoll at SlapsToRagdoll
 	UFUNCTION(BlueprintPure, Category = "Ragdoll")
-	int32 GetSlapCount() const { return SlapCount; }
+	float GetSlapCount() const { return SlapCount; }
 
 	//0-1 for the HUD: slaps toward the ragdoll, then the ragdoll time left while ragdolled
 	UFUNCTION(BlueprintPure, Category = "Ragdoll")
@@ -85,7 +86,7 @@ protected:
 	FName RagdollCollisionProfile = FName("Ragdoll");
 
 	UPROPERTY(ReplicatedUsing = OnRep_SlapCount)
-	int32 SlapCount = 0;
+	float SlapCount = 0.f;
 
 	UPROPERTY(ReplicatedUsing = OnRep_RagdollState)
 	FRagdollState RagdollState;
@@ -97,12 +98,12 @@ protected:
 	void OnRep_RagdollState();
 
 	UFUNCTION(NetMulticast, Reliable)
-	void Multicast_Slapped(AActor* Slapper, FVector_NetQuantizeNormal Direction, bool bKnockback);
+	void Multicast_Slapped(AActor* Slapper, FVector_NetQuantizeNormal Direction, bool bKnockback, float Strength);
 
 	UFUNCTION(NetMulticast, Unreliable)
 	void Multicast_AddRagdollImpulse(FVector_NetQuantize10 Impulse);
 
-	void SetSlapCount(int32 NewCount);
+	void SetSlapCount(float NewCount);
 	void ApplyRagdollState();
 	void EnterRagdoll();
 	void ExitRagdoll();

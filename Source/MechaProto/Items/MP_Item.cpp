@@ -130,7 +130,7 @@ void AMP_Item::OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, 
 	}
 	if (UC_Ragdoll* Ragdoll = OtherActor->FindComponentByClass<UC_Ragdoll>())
 	{
-		Ragdoll->ReceiveSlap(Thrower, ThrowDirection);
+		Ragdoll->ReceiveSlap(Thrower, ThrowDirection, GetItemData()->SlapStrength, GetItemData()->SlapValue);
 	}
 }
 

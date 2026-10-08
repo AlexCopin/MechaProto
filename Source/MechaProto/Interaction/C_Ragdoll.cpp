@@ -45,7 +45,7 @@ void UC_Ragdoll::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void UC_Ragdoll::ReceiveSlap(AActor* Slapper, const FVector& Direction)
+void UC_Ragdoll::ReceiveSlap(AActor* Slapper, const FVector& Direction, float Strength, float Value)
 {
 	if (!GetOwner() || !GetOwner()->HasAuthority())
 	{
@@ -59,29 +59,29 @@ void UC_Ragdoll::ReceiveSlap(AActor* Slapper, const FVector& Direction)
 	{
 		if (Data->bSlapRagdolledBodies)
 		{
-			Multicast_AddRagdollImpulse(Dir * Data->RagdolledBodySlapImpulse);
+			Multicast_AddRagdollImpulse(Dir * Data->RagdolledBodySlapImpulse * Strength);
 		}
-		Multicast_Slapped(Slapper, Dir, false);
+		Multicast_Slapped(Slapper, Dir, false, Strength);
 		return;
 	}
 
-	SetSlapCount(SlapCount + 1);
+	SetSlapCount(SlapCount + Value);
 	if (Data->SlapCountResetDelay > 0.f)
 	{
 		GetWorld()->GetTimerManager().SetTimer(SlapResetTimer, FTimerDelegate::CreateWeakLambda(this, [this]()
 		{
-			SetSlapCount(0);
+			SetSlapCount(0.f);
 		}), Data->SlapCountResetDelay, false);
 	}
 
-	if (SlapCount >= Data->SlapsToRagdoll)
+	if (SlapCount + KINDA_SMALL_NUMBER >= Data->SlapsToRagdoll)
 	{
-		Multicast_Slapped(Slapper, Dir, false);
-		StartRagdoll(Dir * Data->RagdollImpulse + FVector::UpVector * Data->RagdollImpulseUp);
+		Multicast_Slapped(Slapper, Dir, false, Strength);
+		StartRagdoll((Dir * Data->RagdollImpulse + FVector::UpVector * Data->RagdollImpulseUp) * Strength);
 		return;
 	}
 
-	Multicast_Slapped(Slapper, Dir, true);
+	Multicast_Slapped(Slapper, Dir, true, Strength);
 }
 
 void UC_Ragdoll::StartRagdoll(FVector Impulse)
@@ -92,7 +92,7 @@ void UC_Ragdoll::StartRagdoll(FVector Impulse)
 	}
 
 	GetWorld()->GetTimerManager().ClearTimer(SlapResetTimer);
-	SetSlapCount(0);
+	SetSlapCount(0.f);
 
 	RagdollState.bActive = true;
 	RagdollState.Impulse = Impulse;
@@ -144,7 +144,7 @@ float UC_Ragdoll::GetStunPercent() const
 		const float Elapsed = GetWorld()->GetTimeSeconds() - RagdollStartTime;
 		return Data->RagdollDuration > 0.f ? FMath::Clamp(1.f - Elapsed / Data->RagdollDuration, 0.f, 1.f) : 1.f;
 	}
-	return Data->SlapsToRagdoll > 0 ? FMath::Clamp(static_cast<float>(SlapCount) / Data->SlapsToRagdoll, 0.f, 1.f) : 0.f;
+	return Data->SlapsToRagdoll > 0 ? FMath::Clamp(SlapCount / Data->SlapsToRagdoll, 0.f, 1.f) : 0.f;
 }
 
 void UC_Ragdoll::OnRep_SlapCount()
@@ -157,7 +157,7 @@ void UC_Ragdoll::OnRep_RagdollState()
 	ApplyRagdollState();
 }
 
-void UC_Ragdoll::Multicast_Slapped_Implementation(AActor* Slapper, FVector_NetQuantizeNormal Direction, bool bKnockback)
+void UC_Ragdoll::Multicast_Slapped_Implementation(AActor* Slapper, FVector_NetQuantizeNormal Direction, bool bKnockback, float Strength)
 {
 	ACharacter* Character = GetCharacter();
 	//Launch on server and owning client so prediction agrees
@@ -165,7 +165,7 @@ void UC_Ragdoll::Multicast_Slapped_Implementation(AActor* Slapper, FVector_NetQu
 	{
 		const UPDA_Interaction* Data = GetInteractionData();
 		const FVector Flat = FVector(Direction.X, Direction.Y, 0.f).GetSafeNormal();
-		Character->LaunchCharacter(Flat * Data->SlapKnockback + FVector::UpVector * Data->SlapKnockbackUp, true, true);
+		Character->LaunchCharacter((Flat * Data->SlapKnockback + FVector::UpVector * Data->SlapKnockbackUp) * Strength, true, true);
 	}
 
 	OnSlapped.Broadcast(Slapper, Direction);
@@ -188,7 +188,7 @@ void UC_Ragdoll::Multicast_AddRagdollImpulse_Implementation(FVector_NetQuantize1
 	}
 }
 
-void UC_Ragdoll::SetSlapCount(int32 NewCount)
+void UC_Ragdoll::SetSlapCount(float NewCount)
 {
 	if (SlapCount == NewCount)
 	{

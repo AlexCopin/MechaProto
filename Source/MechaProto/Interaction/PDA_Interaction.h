@@ -23,6 +23,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slap", meta = (ClampMin = "0", UIMax = "2", Units = "s"))
 	float SlapCooldown = 0.4f;
 
+	//The player's own slap: multiplies its pushes (knockback, ragdoll impulses). Thrown tools (DA_Tool_*) and enemies (DA_Enemy_*) have their own
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slap", meta = (ClampMin = "0", UIMax = "5"))
+	float SlapStrength = 1.f;
+
+	//The player's own slap: counts as this many slaps toward the ragdoll (SlapsToRagdoll)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slap", meta = (ClampMin = "0", UIMax = "5"))
+	float SlapValue = 1.f;
+
+	//Pushes of a slap at strength 1, whoever slaps
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slap", meta = (ClampMin = "0", UIMax = "2000"))
 	float SlapKnockback = 350.f;
 

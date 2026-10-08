@@ -28,6 +28,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
 	bool bThrowSlapsPlayers = false;
 
+	//Multiplies the pushes of that slap (DA_Interaction values)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item", meta = (ClampMin = "0", UIMax = "5", EditCondition = "bThrowSlapsPlayers"))
+	float SlapStrength = 1.f;
+
+	//That slap counts as this many slaps toward the ragdoll (DA_Interaction.SlapsToRagdoll)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item", meta = (ClampMin = "0", UIMax = "5", EditCondition = "bThrowSlapsPlayers"))
+	float SlapValue = 1.f;
+
 	//Time between two uses
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item", meta = (ClampMin = "0", UIMax = "5", Units = "s"))
 	float UseCooldown = 0.5f;

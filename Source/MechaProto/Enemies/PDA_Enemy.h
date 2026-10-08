@@ -77,6 +77,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hunt")
 	bool bSlapPlayers = true;
 
+	//Multiplies the pushes of that slap (DA_Interaction values)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hunt", meta = (ClampMin = "0", UIMax = "5", EditCondition = "bSlapPlayers"))
+	float SlapStrength = 1.f;
+
+	//That slap counts as this many slaps toward the ragdoll (DA_Interaction.SlapsToRagdoll)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hunt", meta = (ClampMin = "0", UIMax = "5", EditCondition = "bSlapPlayers"))
+	float SlapValue = 1.f;
+
 	//Gap between the bodies to hit a player
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Hunt", meta = (ClampMin = "0", UIMax = "300", Units = "cm"))
 	float PlayerReach = 40.f;

@@ -420,7 +420,7 @@ void AMP_Enemy::HitPlayer(APawn* Player)
 	{
 		if (UC_Ragdoll* Ragdoll = Player->FindComponentByClass<UC_Ragdoll>())
 		{
-			Ragdoll->ReceiveSlap(this, Direction);
+			Ragdoll->ReceiveSlap(this, Direction, Data->SlapStrength, Data->SlapValue);
 		}
 	}
 	if (Data->bKamikaze)

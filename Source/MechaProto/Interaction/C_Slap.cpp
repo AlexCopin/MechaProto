@@ -58,7 +58,7 @@ void UC_Slap::Server_Slap_Implementation()
 		AActor* HitActor = Hit.GetActor();
 		if (UC_Ragdoll* Ragdoll = HitActor ? HitActor->FindComponentByClass<UC_Ragdoll>() : nullptr)
 		{
-			Ragdoll->ReceiveSlap(Pawn, Direction);
+			Ragdoll->ReceiveSlap(Pawn, Direction, Data->SlapStrength, Data->SlapValue);
 			bHit = true;
 			break;
 		}
