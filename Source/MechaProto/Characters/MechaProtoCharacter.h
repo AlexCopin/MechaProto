@@ -100,6 +100,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category ="Input")
 	TObjectPtr<UInputAction> SlideAction;
 
+	//Hold to run
+	UPROPERTY(EditAnywhere, Category ="Input")
+	TObjectPtr<UInputAction> RunAction;
+
 	UPROPERTY(EditAnywhere, Category ="Input")
 	TObjectPtr<UInputAction> InteractAction;
 
@@ -173,6 +177,12 @@ protected:
 
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoSlideEnd();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void DoRunStart();
+
+	UFUNCTION(BlueprintCallable, Category="Input")
+	virtual void DoRunEnd();
 
 	UFUNCTION(BlueprintPure, Category="Movement")
 	bool IsSliding() const;

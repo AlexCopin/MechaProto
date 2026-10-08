@@ -1,5 +1,7 @@
 #include "C_PlayerStats.h"
 #include "PDA_PlayerStats.h"
+#include "C_CharacterMovement.h"
+#include "GameFramework/Character.h"
 #include "Net/UnrealNetwork.h"
 
 UC_PlayerStats::UC_PlayerStats()
@@ -53,19 +55,23 @@ void UC_PlayerStats::ModifyHealth(float Amount)
 	}
 }
 
-void UC_PlayerStats::ModifyStamina(float Amount)
+void UC_PlayerStats::SetReplicatedStamina(float NewStamina)
 {
-	if (!GetOwner()->HasAuthority())
+	if (!GetOwner()->HasAuthority() || NewStamina == Stamina)
 	{
 		return;
 	}
 
 	const float OldStamina = Stamina;
-	Stamina = FMath::Clamp(Stamina + Amount, 0.f, GetMaxStamina());
-	if (Stamina != OldStamina)
-	{
-		OnRep_Stamina(OldStamina);
-	}
+	Stamina = NewStamina;
+	OnRep_Stamina(OldStamina);
+}
+
+float UC_PlayerStats::GetStamina() const
+{
+	const ACharacter* Character = Cast<ACharacter>(GetOwner());
+	const UC_CharacterMovement* Movement = Character ? Cast<UC_CharacterMovement>(Character->GetCharacterMovement()) : nullptr;
+	return Movement && Movement->IsStaminaSimulated() ? Movement->GetStamina() : Stamina;
 }
 
 float UC_PlayerStats::GetMaxHealth() const
@@ -85,7 +91,7 @@ float UC_PlayerStats::GetMaxStamina() const
 
 float UC_PlayerStats::GetStaminaPercent() const
 {
-	return FMath::Clamp(Stamina / FMath::Max(GetMaxStamina(), 1.f), 0.f, 1.f);
+	return FMath::Clamp(GetStamina() / FMath::Max(GetMaxStamina(), 1.f), 0.f, 1.f);
 }
 
 void UC_PlayerStats::OnRep_Health(float OldHealth)

@@ -147,6 +147,12 @@ void AMechaProtoCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInpu
 			EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoSlideStart);
 			EnhancedInputComponent->BindAction(SlideAction, ETriggerEvent::Completed, this, &AMechaProtoCharacter::DoSlideEnd);
 		}
+
+		if (RunAction)
+		{
+			EnhancedInputComponent->BindAction(RunAction, ETriggerEvent::Started, this, &AMechaProtoCharacter::DoRunStart);
+			EnhancedInputComponent->BindAction(RunAction, ETriggerEvent::Completed, this, &AMechaProtoCharacter::DoRunEnd);
+		}
 	}
 	else
 	{
@@ -338,6 +344,23 @@ void AMechaProtoCharacter::DoSlideEnd()
 	if (UC_CharacterMovement* Movement = GetMechaMovement())
 	{
 		Movement->SetWantsToSlide(false);
+	}
+}
+
+void AMechaProtoCharacter::DoRunStart()
+{
+	//Held through a ragdoll or a station, it runs again once walking
+	if (UC_CharacterMovement* Movement = GetMechaMovement())
+	{
+		Movement->SetWantsToRun(true);
+	}
+}
+
+void AMechaProtoCharacter::DoRunEnd()
+{
+	if (UC_CharacterMovement* Movement = GetMechaMovement())
+	{
+		Movement->SetWantsToRun(false);
 	}
 }
 

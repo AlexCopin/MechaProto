@@ -8,7 +8,7 @@ class UPDA_PlayerStats;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnPlayerStatChanged, float, NewValue, float, OldValue);
 
-//Health and stamina of a player: server authoritative, replicated. Nothing drains them yet
+//Health (server authoritative, replicated) and stamina of a player. The stamina is movement state: UC_CharacterMovement predicts it (run), the server copies it here for the others
 UCLASS(ClassGroup = (MechaProto), meta = (BlueprintSpawnableComponent))
 class MECHAPROTO_API UC_PlayerStats : public UActorComponent
 {
@@ -21,7 +21,7 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Stats")
 	FOnPlayerStatChanged OnHealthChanged;
 
-	//Every machine
+	//The server's value: on the server and the other players' machines (OnRep), not the owner's prediction
 	UPROPERTY(BlueprintAssignable, Category = "Stats")
 	FOnPlayerStatChanged OnStaminaChanged;
 
@@ -32,8 +32,8 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Stats")
 	void ModifyHealth(float Amount);
 
-	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Stats")
-	void ModifyStamina(float Amount);
+	//Server, from the movement component every move
+	void SetReplicatedStamina(float NewStamina);
 
 	UFUNCTION(BlueprintPure, Category = "Stats")
 	const UPDA_PlayerStats* GetStatsData() const;
@@ -48,8 +48,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Stats")
 	float GetHealthPercent() const;
 
+	//The movement's prediction on the owner and the server, the replicated copy elsewhere
 	UFUNCTION(BlueprintPure, Category = "Stats")
-	float GetStamina() const { return Stamina; }
+	float GetStamina() const;
 
 	UFUNCTION(BlueprintPure, Category = "Stats")
 	float GetMaxStamina() const;

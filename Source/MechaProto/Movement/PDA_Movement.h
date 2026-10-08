@@ -6,13 +6,40 @@
 
 class UAnimSequenceBase;
 
-//Player movement tuning (slide, ladder), read live so it can be edited during PIE
+//Player movement tuning (walk / run, slide, ladder), read live so it can be edited during PIE
 UCLASS(BlueprintType)
 class MECHAPROTO_API UPDA_Movement : public UPrimaryDataAsset
 {
 	GENERATED_BODY()
 
 public:
+	//-----Walk / run (hold run: faster, uses stamina; the max stamina is in DA_PlayerStats)
+	//Normal ground speed, a fast walk
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Run", meta = (ClampMin = "50", UIMax = "1500", Units = "CentimetersPerSecond"))
+	float WalkSpeed = 450.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Run", meta = (ClampMin = "50", UIMax = "1500", Units = "CentimetersPerSecond"))
+	float RunSpeed = 750.f;
+
+	//Stamina used per second of running (100 max stamina / 20 = 5 s)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Run", meta = (ClampMin = "0", UIMax = "100"))
+	float RunStaminaCost = 20.f;
+
+	//Stamina regained per second, once StaminaRegenDelay has passed without running
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Run", meta = (ClampMin = "0", UIMax = "100"))
+	float StaminaRegenRate = 25.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Run", meta = (ClampMin = "0", UIMax = "5", Units = "s"))
+	float StaminaRegenDelay = 1.f;
+
+	//Out of stamina: no run until it is back to this, so it doesn't stutter at 0
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Run", meta = (ClampMin = "0", UIMax = "100"))
+	float RunRestartStamina = 30.f;
+
+	//Runs only when the move input is within this angle of the facing direction (no sideways or backward run)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Run", meta = (ClampMin = "0", ClampMax = "180", Units = "Degrees"))
+	float RunMaxInputAngle = 60.f;
+
 	//-----Slide
 	//Ground speed needed to start a slide
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slide", meta = (ClampMin = "0", UIMax = "1000", Units = "CentimetersPerSecond"))

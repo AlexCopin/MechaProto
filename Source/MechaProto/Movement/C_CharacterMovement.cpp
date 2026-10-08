@@ -1,5 +1,6 @@
 #include "C_CharacterMovement.h"
 #include "PDA_Movement.h"
+#include "C_PlayerStats.h"
 #include "MP_Ladder.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/Character.h"
@@ -16,6 +17,10 @@ void UC_CharacterMovement::FSavedMove_Mecha::Clear()
 {
 	Super::Clear();
 	bSavedWantsToSlide = 0;
+	bSavedWantsToRun = 0;
+	bSavedRunExhausted = 0;
+	SavedStamina = 0.f;
+	SavedStaminaRegenDelayLeft = 0.f;
 }
 
 uint8 UC_CharacterMovement::FSavedMove_Mecha::GetCompressedFlags() const
@@ -25,13 +30,17 @@ uint8 UC_CharacterMovement::FSavedMove_Mecha::GetCompressedFlags() const
 	{
 		Result |= FLAG_Custom_0;
 	}
+	if (bSavedWantsToRun)
+	{
+		Result |= FLAG_Custom_1;
+	}
 	return Result;
 }
 
 bool UC_CharacterMovement::FSavedMove_Mecha::CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* InCharacter, float MaxDelta) const
 {
 	const FSavedMove_Mecha* Other = static_cast<const FSavedMove_Mecha*>(NewMove.Get());
-	if (bSavedWantsToSlide != Other->bSavedWantsToSlide)
+	if (bSavedWantsToSlide != Other->bSavedWantsToSlide || bSavedWantsToRun != Other->bSavedWantsToRun)
 	{
 		return false;
 	}
@@ -45,6 +54,10 @@ void UC_CharacterMovement::FSavedMove_Mecha::SetMoveFor(ACharacter* C, float InD
 	if (const UC_CharacterMovement* Movement = Cast<UC_CharacterMovement>(C->GetCharacterMovement()))
 	{
 		bSavedWantsToSlide = Movement->bWantsToSlide;
+		bSavedWantsToRun = Movement->bWantsToRun;
+		bSavedRunExhausted = Movement->bRunExhausted;
+		SavedStamina = Movement->Stamina;
+		SavedStaminaRegenDelayLeft = Movement->StaminaRegenDelayLeft;
 	}
 }
 
@@ -55,6 +68,25 @@ void UC_CharacterMovement::FSavedMove_Mecha::PrepMoveFor(ACharacter* C)
 	if (UC_CharacterMovement* Movement = Cast<UC_CharacterMovement>(C->GetCharacterMovement()))
 	{
 		Movement->bWantsToSlide = bSavedWantsToSlide;
+		Movement->bWantsToRun = bSavedWantsToRun;
+		//Replays start from the stamina this move started with
+		Movement->bRunExhausted = bSavedRunExhausted;
+		Movement->Stamina = SavedStamina;
+		Movement->StaminaRegenDelayLeft = SavedStaminaRegenDelayLeft;
+	}
+}
+
+void UC_CharacterMovement::FSavedMove_Mecha::CombineWith(const FSavedMove_Character* OldMove, ACharacter* InCharacter, APlayerController* PC, const FVector& OldStartLocation)
+{
+	Super::CombineWith(OldMove, InCharacter, PC, OldStartLocation);
+
+	//The combined move is played again from the old move's start, so is its stamina
+	const FSavedMove_Mecha* Old = static_cast<const FSavedMove_Mecha*>(OldMove);
+	if (UC_CharacterMovement* Movement = Cast<UC_CharacterMovement>(InCharacter->GetCharacterMovement()))
+	{
+		Movement->bRunExhausted = Old->bSavedRunExhausted;
+		Movement->Stamina = Old->SavedStamina;
+		Movement->StaminaRegenDelayLeft = Old->SavedStaminaRegenDelayLeft;
 	}
 }
 
@@ -73,6 +105,74 @@ UC_CharacterMovement::UC_CharacterMovement()
 void UC_CharacterMovement::SetWantsToSlide(bool bInWantsToSlide)
 {
 	bWantsToSlide = bInWantsToSlide;
+}
+
+void UC_CharacterMovement::SetWantsToRun(bool bInWantsToRun)
+{
+	bWantsToRun = bInWantsToRun;
+}
+
+bool UC_CharacterMovement::IsStaminaSimulated() const
+{
+	return Stamina >= 0.f && CharacterOwner && (CharacterOwner->HasAuthority() || CharacterOwner->IsLocallyControlled());
+}
+
+UC_PlayerStats* UC_CharacterMovement::GetPlayerStats() const
+{
+	if (!CachedPlayerStats.IsValid() && CharacterOwner)
+	{
+		CachedPlayerStats = CharacterOwner->FindComponentByClass<UC_PlayerStats>();
+	}
+	return CachedPlayerStats.Get();
+}
+
+float UC_CharacterMovement::GetMaxStamina() const
+{
+	const UC_PlayerStats* Stats = GetPlayerStats();
+	return Stats ? Stats->GetMaxStamina() : 100.f;
+}
+
+void UC_CharacterMovement::UpdateRun(float DeltaSeconds)
+{
+	const UPDA_Movement* Data = GetMovementData();
+	const float MaxStamina = GetMaxStamina();
+	if (Stamina < 0.f)
+	{
+		Stamina = MaxStamina;
+	}
+
+	//Moving roughly where it faces, on the ground
+	const FVector Input = Acceleration.GetSafeNormal2D();
+	const bool bForward = !Input.IsNearlyZero() && FVector::DotProduct(Input, UpdatedComponent->GetForwardVector().GetSafeNormal2D()) >= FMath::Cos(FMath::DegreesToRadians(Data->RunMaxInputAngle));
+	bIsRunning = bWantsToRun && bForward && MovementMode == MOVE_Walking && !IsCrouching() && !bRunExhausted && Stamina > 0.f;
+
+	if (bIsRunning)
+	{
+		Stamina = FMath::Max(0.f, Stamina - Data->RunStaminaCost * DeltaSeconds);
+		StaminaRegenDelayLeft = Data->StaminaRegenDelay;
+		bRunExhausted = Stamina <= 0.f;
+	}
+	else if (StaminaRegenDelayLeft > 0.f)
+	{
+		StaminaRegenDelayLeft -= DeltaSeconds;
+	}
+	else
+	{
+		Stamina = FMath::Min(MaxStamina, Stamina + Data->StaminaRegenRate * DeltaSeconds);
+	}
+	if (bRunExhausted && Stamina >= FMath::Min(Data->RunRestartStamina, MaxStamina))
+	{
+		bRunExhausted = false;
+	}
+
+	//The server's value, for the other players
+	if (CharacterOwner->HasAuthority())
+	{
+		if (UC_PlayerStats* Stats = GetPlayerStats())
+		{
+			Stats->SetReplicatedStamina(Stamina);
+		}
+	}
 }
 
 bool UC_CharacterMovement::IsSliding() const
@@ -131,6 +231,11 @@ float UC_CharacterMovement::GetMaxSpeed() const
 	{
 		return FMath::Max(GetMovementData()->LadderClimbSpeed, GetMovementData()->LadderSlideSpeed);
 	}
+	//Replaces MaxWalkSpeed, also the air control limit (a running jump keeps its speed)
+	if ((MovementMode == MOVE_Walking || MovementMode == MOVE_NavWalking || MovementMode == MOVE_Falling) && !IsCrouching())
+	{
+		return bIsRunning ? GetMovementData()->RunSpeed : GetMovementData()->WalkSpeed;
+	}
 	return Super::GetMaxSpeed();
 }
 
@@ -177,6 +282,7 @@ void UC_CharacterMovement::UpdateFromCompressedFlags(uint8 Flags)
 	Super::UpdateFromCompressedFlags(Flags);
 
 	bWantsToSlide = (Flags & FSavedMove_Character::FLAG_Custom_0) != 0;
+	bWantsToRun = (Flags & FSavedMove_Character::FLAG_Custom_1) != 0;
 }
 
 void UC_CharacterMovement::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
@@ -200,6 +306,8 @@ void UC_CharacterMovement::UpdateCharacterStateBeforeMovement(float DeltaSeconds
 	{
 		SetMovementMode(MOVE_Walking);
 	}
+
+	UpdateRun(DeltaSeconds);
 
 	//Applies the crouch the slide asked for
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);

@@ -5,6 +5,7 @@
 #include "C_CharacterMovement.generated.h"
 
 class AMP_Ladder;
+class UC_PlayerStats;
 class UPDA_Movement;
 
 UENUM(BlueprintType)
@@ -15,7 +16,7 @@ enum class ECustomMovementMode : uint8
 	Ladder,
 };
 
-//Character movement with a predicted slide and ladder (custom movement modes, input sent in the saved moves)
+//Character movement with a predicted run (stamina), slide and ladder (custom movement modes, input sent in the saved moves)
 UCLASS()
 class MECHAPROTO_API UC_CharacterMovement : public UCharacterMovementComponent
 {
@@ -27,12 +28,19 @@ class MECHAPROTO_API UC_CharacterMovement : public UCharacterMovementComponent
 		typedef FSavedMove_Character Super;
 
 		uint8 bSavedWantsToSlide : 1;
+		uint8 bSavedWantsToRun : 1;
+
+		//Run state at the start of the move, put back for replays and combined moves
+		uint8 bSavedRunExhausted : 1;
+		float SavedStamina = 0.f;
+		float SavedStaminaRegenDelayLeft = 0.f;
 
 		virtual void Clear() override;
 		virtual uint8 GetCompressedFlags() const override;
 		virtual bool CanCombineWith(const FSavedMovePtr& NewMove, ACharacter* InCharacter, float MaxDelta) const override;
 		virtual void SetMoveFor(ACharacter* C, float InDeltaTime, FVector const& NewAccel, FNetworkPredictionData_Client_Character& ClientData) override;
 		virtual void PrepMoveFor(ACharacter* C) override;
+		virtual void CombineWith(const FSavedMove_Character* OldMove, ACharacter* InCharacter, APlayerController* PC, const FVector& OldStartLocation) override;
 	};
 
 	class FNetworkPredictionData_Client_Mecha : public FNetworkPredictionData_Client_Character
@@ -52,6 +60,18 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Slide")
 	bool IsSliding() const;
+
+	//Hold to run, called by the local player input
+	UFUNCTION(BlueprintCallable, Category = "Run")
+	void SetWantsToRun(bool bInWantsToRun);
+
+	//Running this move: walking with the run held, moving forward, stamina left. Server and owning client only
+	UFUNCTION(BlueprintPure, Category = "Run")
+	bool IsRunning() const { return bIsRunning; }
+
+	//Simulated here on the server and the owning client only, the others read UC_PlayerStats
+	bool IsStaminaSimulated() const;
+	float GetStamina() const { return FMath::Max(Stamina, 0.f); }
 
 	UFUNCTION(BlueprintPure, Category = "Ladder")
 	bool IsOnLadder() const;
@@ -84,6 +104,11 @@ protected:
 	//Push strength from the data, read live
 	virtual void ApplyImpactPhysicsForces(const FHitResult& Impact, const FVector& ImpactAcceleration, const FVector& ImpactVelocity) override;
 
+	//Each move: whether it runs, then stamina drain / regen
+	void UpdateRun(float DeltaSeconds);
+	float GetMaxStamina() const;
+	UC_PlayerStats* GetPlayerStats() const;
+
 	bool CanStartSlide() const;
 	void EnterSlide();
 	void PhysSlide(float DeltaTime, int32 Iterations);
@@ -107,4 +132,13 @@ protected:
 
 	//Input state, replayed by the saved moves
 	bool bWantsToSlide = false;
+	bool bWantsToRun = false;
+
+	//Run state, simulated the same way by the owning client and the server; the server copies the stamina to UC_PlayerStats
+	bool bIsRunning = false;
+	bool bRunExhausted = false;
+	//-1 until the first move fills it
+	float Stamina = -1.f;
+	float StaminaRegenDelayLeft = 0.f;
+	mutable TWeakObjectPtr<UC_PlayerStats> CachedPlayerStats;
 };
