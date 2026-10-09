@@ -53,6 +53,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Station")
 	bool IsDisabled() const;
 
+	//The first broken required system, null when the station works
+	UFUNCTION(BlueprintPure, Category = "Station")
+	AMP_Breakable* GetBrokenSystem() const;
+
 protected:
 	//Mech systems this station needs (engine, rotor...): it doesn't work while one of them is broken
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Station")

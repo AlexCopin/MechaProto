@@ -288,6 +288,17 @@ void UC_StationUser::TickWeapon(AMP_WeaponStation* Weapon, float DeltaTime)
 	}
 }
 
+float UC_StationUser::GetFireReadyPercent() const
+{
+	const AMP_WeaponStation* Weapon = Cast<AMP_WeaponStation>(Station);
+	const float Cooldown = Weapon ? Weapon->GetStationData()->FireCooldown : 0.f;
+	if (Cooldown <= 0.f)
+	{
+		return 1.f;
+	}
+	return FMath::Clamp((GetWorld()->GetTimeSeconds() - LastFireTime) / Cooldown, 0.f, 1.f);
+}
+
 void UC_StationUser::TickLookout(AMP_LookoutStation* Lookout, float DeltaTime)
 {
 	//The beam follows the view at once, the others get it like a gun's aim

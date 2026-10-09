@@ -161,12 +161,17 @@ bool AMP_Station::IsLocallyUsed() const
 
 bool AMP_Station::IsDisabled() const
 {
-	for (const AMP_Breakable* System : RequiredSystems)
+	return GetBrokenSystem() != nullptr;
+}
+
+AMP_Breakable* AMP_Station::GetBrokenSystem() const
+{
+	for (AMP_Breakable* System : RequiredSystems)
 	{
 		if (System && System->IsBroken())
 		{
-			return true;
+			return System;
 		}
 	}
-	return false;
+	return nullptr;
 }

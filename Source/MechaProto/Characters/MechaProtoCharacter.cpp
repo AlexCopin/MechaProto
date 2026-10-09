@@ -433,6 +433,21 @@ void AMechaProtoCharacter::Tick(float DeltaSeconds)
 	{
 		UpdateSlideCamera(DeltaSeconds);
 		UpdateLadderCamera(DeltaSeconds);
+		UpdateFieldOfView();
+	}
+}
+
+void AMechaProtoCharacter::UpdateFieldOfView()
+{
+	const UC_CharacterMovement* Movement = GetMechaMovement();
+	if (!Movement)
+	{
+		return;
+	}
+	const float FieldOfView = Movement->GetMovementData()->FieldOfView;
+	if (!FMath::IsNearlyEqual(FirstPersonCameraComponent->FieldOfView, FieldOfView))
+	{
+		FirstPersonCameraComponent->SetFieldOfView(FieldOfView);
 	}
 }
 

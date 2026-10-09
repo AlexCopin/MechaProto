@@ -74,12 +74,18 @@ protected:
 
 	//Beam light, cone size and material from the data
 	void ApplyBeam();
+	//Cone from the lamp to where the beam stops
+	void ApplyBeamShape();
+	//The first wall or ground between two points (world static: enemies, players and items don't stop the light)
+	bool TraceObstacle(const FVector& Start, const FVector& End, FHitResult& OutHit) const;
 	//Overlay on the enemies in the beam, off on those that left it
 	void UpdateMarks();
 	void ClearMarks();
 
 	//The light's current tilt (it points where the head faces)
 	float BeamPitch = -25.f;
+	//How far the beam goes before something stops it (0 = its full BeamLength)
+	float BeamReach = 0.f;
 	FRotator UserAim = FRotator::ZeroRotator;
 	float MarkTimer = 0.f;
 	float ApplyTimer = 0.f;

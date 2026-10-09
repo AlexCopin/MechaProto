@@ -13,6 +13,11 @@ class MECHAPROTO_API UPDA_Movement : public UPrimaryDataAsset
 	GENERATED_BODY()
 
 public:
+	//-----View
+	//Field of view of the first person camera (stations set their own in their data)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "View", meta = (ClampMin = "40", ClampMax = "120", Units = "Degrees"))
+	float FieldOfView = 80.f;
+
 	//-----Walk / run (hold run: faster, uses stamina; the max stamina is in DA_PlayerStats)
 	//Normal ground speed, a fast walk
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Run", meta = (ClampMin = "50", UIMax = "1500", Units = "CentimetersPerSecond"))

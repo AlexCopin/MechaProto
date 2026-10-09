@@ -117,11 +117,7 @@ void AMP_LookoutStation::ApplyBeam()
 	BeamLight->SetAttenuationRadius(Data->BeamLength);
 	BeamLight->SetOuterConeAngle(Data->BeamAngle);
 	BeamLight->SetInnerConeAngle(Data->BeamAngle * 0.6f);
-
-	//Cone from the lamp to the beam's end, as wide as the light there
-	const float Radius = Data->BeamLength * FMath::Tan(FMath::DegreesToRadians(Data->BeamAngle));
-	BeamMesh->SetRelativeLocation(FVector(Data->BeamLength * 0.5f, 0.f, 0.f));
-	BeamMesh->SetRelativeScale3D(FVector(Radius / 50.f, Radius / 50.f, Data->BeamLength / 100.f));
+	ApplyBeamShape();
 	BeamMesh->SetVisibility(Data->BeamMaterial != nullptr);
 	if (Data->BeamMaterial)
 	{
@@ -132,6 +128,22 @@ void AMP_LookoutStation::ApplyBeam()
 			Material->SetScalarParameterValue(TEXT("Intensity"), Data->BeamBrightness);
 		}
 	}
+}
+
+void AMP_LookoutStation::ApplyBeamShape()
+{
+	//As wide as the light where it stops
+	const UPDA_LookoutStation* Data = GetLookoutData();
+	const float Length = BeamReach > 0.f ? FMath::Min(BeamReach, Data->BeamLength) : Data->BeamLength;
+	const float Radius = Length * FMath::Tan(FMath::DegreesToRadians(Data->BeamAngle));
+	BeamMesh->SetRelativeLocation(FVector(Length * 0.5f, 0.f, 0.f));
+	BeamMesh->SetRelativeScale3D(FVector(Radius / 50.f, Radius / 50.f, Length / 100.f));
+}
+
+bool AMP_LookoutStation::TraceObstacle(const FVector& Start, const FVector& End, FHitResult& OutHit) const
+{
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(LookoutBeam), false, this);
+	return GetWorld()->LineTraceSingleByObjectType(OutHit, Start, End, FCollisionObjectQueryParams(ECC_WorldStatic), Params);
 }
 
 FVector AMP_LookoutStation::GetCameraPivotLocation() const
@@ -189,6 +201,12 @@ void AMP_LookoutStation::Tick(float DeltaSeconds)
 	Lamp->SetWorldRotation(FRotator(BeamPitch, GetActorRotation().Yaw, 0.f));
 	BeamMesh->SetHiddenInGame(Data->bHideBeamConeForUser && IsLocallyUsed());
 
+	//The cone stops on the first wall or ground it meets, like the light's shadows
+	const FVector LampLocation = Lamp->GetComponentLocation();
+	FHitResult Hit;
+	BeamReach = TraceObstacle(LampLocation, LampLocation + Lamp->GetForwardVector() * Data->BeamLength, Hit) ? FMath::Max(Hit.Distance, 1.f) : Data->BeamLength;
+	ApplyBeamShape();
+
 	ApplyTimer -= DeltaSeconds;
 	if (ApplyTimer <= 0.f)
 	{
@@ -226,6 +244,12 @@ void AMP_LookoutStation::UpdateMarks()
 		const FVector ToEnemy = It->GetActorLocation() - Origin;
 		const float Distance = ToEnemy.Size();
 		if (Distance < 1.f || Distance > Data->BeamLength || FVector::DotProduct(ToEnemy / Distance, Axis) < MinDot)
+		{
+			continue;
+		}
+		//Lit only when nothing stands between it and the lamp
+		FHitResult Hit;
+		if (TraceObstacle(Origin, It->GetActorLocation(), Hit))
 		{
 			continue;
 		}

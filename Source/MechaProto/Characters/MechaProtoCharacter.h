@@ -234,6 +234,9 @@ protected:
 	TWeakObjectPtr<UAnimMontage> LadderMontage;
 	TWeakObjectPtr<UAnimSequenceBase> LadderMontageAnimation;
 
+	//The first person camera's field of view from DA_Movement (owner only)
+	void UpdateFieldOfView();
+
 	//Turns the view to face the ladder when grabbing it (owner only)
 	void UpdateLadderCamera(float DeltaSeconds);
 	bool bLadderCameraWasOnLadder = false;

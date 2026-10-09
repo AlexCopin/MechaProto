@@ -1,15 +1,31 @@
 #include "MP_HUD.h"
+#include "C_Ragdoll.h"
+#include "C_StationUser.h"
 #include "MP_AlertListWidget.h"
 #include "MP_AlertSource.h"
 #include "MP_AlertWidget.h"
+#include "MP_Breakable.h"
 #include "MP_MainMenuWidget.h"
+#include "MP_PilotStation.h"
 #include "MP_PlayerStatsWidget.h"
+#include "MP_WeaponStation.h"
+#include "PDA_Breakable.h"
 #include "PDA_HUD.h"
+#include "PDA_WeaponStation.h"
 #include "Components/PanelWidget.h"
+#include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+
+namespace
+{
+	constexpr int32 CooldownRingSegments = 48;
+	//Crosshair sizes are given for this screen height
+	constexpr float CrosshairReferenceHeight = 1080.f;
+}
 
 AMP_HUD::AMP_HUD()
 {
@@ -42,6 +58,107 @@ void AMP_HUD::BeginPlay()
 		return;
 	}
 	ShowGameWidgets();
+}
+
+void AMP_HUD::DrawHUD()
+{
+	Super::DrawHUD();
+
+	if (!MainMenuWidget && PlayerOwner && PlayerOwner->IsLocalController())
+	{
+		DrawCrosshair();
+	}
+}
+
+void AMP_HUD::DrawCrosshair()
+{
+	const UPDA_HUD* Data = GetHUDData();
+	const APawn* Pawn = PlayerOwner->GetPawn();
+	if (!Data->bShowCrosshair || !Pawn || !Canvas)
+	{
+		return;
+	}
+	//Ragdolled: the camera follows the body, nothing to aim
+	const UC_Ragdoll* Ragdoll = Pawn->FindComponentByClass<UC_Ragdoll>();
+	if (Ragdoll && Ragdoll->IsRagdolled())
+	{
+		return;
+	}
+
+	const UC_StationUser* StationUser = Pawn->FindComponentByClass<UC_StationUser>();
+	const AMP_Station* Station = StationUser ? StationUser->GetStation() : nullptr;
+	const float Scale = Canvas->ClipY / CrosshairReferenceHeight;
+	const FVector2D Center(Canvas->ClipX * 0.5f, Canvas->ClipY * 0.5f);
+
+	//A broken system stops the station: its name under the crosshair
+	const AMP_Breakable* Broken = Station ? Station->GetBrokenSystem() : nullptr;
+	if (Broken)
+	{
+		const FString Text = FText::Format(Data->DisabledText, Broken->GetBreakableData()->DisplayName).ToString();
+		UFont* Font = GEngine->GetMediumFont();
+		float Width = 0.f;
+		float Height = 0.f;
+		GetTextSize(Text, Width, Height, Font, Scale);
+		DrawText(Text, Data->DisabledColor, Center.X - Width * 0.5f, Center.Y + (Data->CooldownRingRadius + 12.f) * Scale, Font, Scale);
+	}
+	if (Station && Station->IsA<AMP_PilotStation>() && !Data->bShowCrosshairForPilot)
+	{
+		return;
+	}
+
+	//Four lines around a dot, each over a slightly bigger dark one
+	const float Gap = Data->CrosshairGap * Scale;
+	const float Length = Data->CrosshairSize * Scale;
+	const float HalfThickness = FMath::Max(1.f, Data->CrosshairThickness * Scale) * 0.5f;
+	TArray<FBox2D, TInlineAllocator<5>> Bars;
+	if (Length > 0.f)
+	{
+		Bars.Add(FBox2D(FVector2D(Center.X + Gap, Center.Y - HalfThickness), FVector2D(Center.X + Gap + Length, Center.Y + HalfThickness)));
+		Bars.Add(FBox2D(FVector2D(Center.X - Gap - Length, Center.Y - HalfThickness), FVector2D(Center.X - Gap, Center.Y + HalfThickness)));
+		Bars.Add(FBox2D(FVector2D(Center.X - HalfThickness, Center.Y + Gap), FVector2D(Center.X + HalfThickness, Center.Y + Gap + Length)));
+		Bars.Add(FBox2D(FVector2D(Center.X - HalfThickness, Center.Y - Gap - Length), FVector2D(Center.X + HalfThickness, Center.Y - Gap)));
+	}
+	if (Data->bCrosshairDot)
+	{
+		Bars.Add(FBox2D(Center - FVector2D(HalfThickness), Center + FVector2D(HalfThickness)));
+	}
+	for (const FBox2D& Bar : Bars)
+	{
+		DrawRect(Data->CrosshairOutlineColor, Bar.Min.X - 1.f, Bar.Min.Y - 1.f, Bar.GetSize().X + 2.f, Bar.GetSize().Y + 2.f);
+	}
+	const FLinearColor Color = Broken ? Data->DisabledColor : Data->CrosshairColor;
+	for (const FBox2D& Bar : Bars)
+	{
+		DrawRect(Color, Bar.Min.X, Bar.Min.Y, Bar.GetSize().X, Bar.GetSize().Y);
+	}
+
+	//Reloading: the ring fills up until the next shot
+	const AMP_WeaponStation* Weapon = Cast<AMP_WeaponStation>(Station);
+	if (Weapon && !Broken && Weapon->GetStationData()->FireCooldown >= Data->CooldownMinToShow)
+	{
+		const float Ready = StationUser->GetFireReadyPercent();
+		if (Ready < 1.f)
+		{
+			DrawCooldownRing(Center, Scale, Ready);
+		}
+	}
+}
+
+void AMP_HUD::DrawCooldownRing(const FVector2D& Center, float Scale, float ReadyPercent)
+{
+	//From the top, clockwise
+	const UPDA_HUD* Data = GetHUDData();
+	const float Radius = Data->CooldownRingRadius * Scale;
+	const float Thickness = FMath::Max(1.f, Data->CooldownRingThickness * Scale);
+	const int32 Filled = FMath::RoundToInt(ReadyPercent * CooldownRingSegments);
+	for (int32 Index = 0; Index < CooldownRingSegments; ++Index)
+	{
+		const float StartAngle = UE_TWO_PI * Index / CooldownRingSegments;
+		const float EndAngle = UE_TWO_PI * (Index + 1) / CooldownRingSegments;
+		const FVector2D Start = Center + FVector2D(FMath::Sin(StartAngle), -FMath::Cos(StartAngle)) * Radius;
+		const FVector2D End = Center + FVector2D(FMath::Sin(EndAngle), -FMath::Cos(EndAngle)) * Radius;
+		DrawLine(Start.X, Start.Y, End.X, End.Y, Index < Filled ? Data->CooldownColor : Data->CooldownBackColor, Thickness);
+	}
 }
 
 void AMP_HUD::ShowGameWidgets()

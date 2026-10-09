@@ -23,6 +23,7 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void DrawHUD() override;
 
 	//Shows the alert on every local player's screen, or refreshes it (same Key and Source) and restarts its timer
 	//Local only: call it where every machine sees the change (an OnRep, and on the server which gets no OnRep)
@@ -63,6 +64,9 @@ protected:
 
 	void ShowGameWidgets();
 	void ShowMainMenu();
+	//Crosshair, weapon cooldown ring and the broken system of the station (game widgets only)
+	void DrawCrosshair();
+	void DrawCooldownRing(const FVector2D& Center, float Scale, float ReadyPercent);
 	//Plays its hide animation, it removes itself after
 	void RemoveAlertAt(int32 Index);
 	static void ForEachLocalHUD(const UObject* WorldContextObject, TFunctionRef<void(AMP_HUD&)> Function);

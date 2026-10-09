@@ -21,7 +21,7 @@
 namespace
 {
 	//Engine cube
-	constexpr float CubeSize = 100.f;
+	constexpr float MechCubeSize = 100.f;
 	//Farther than this from the server's state, a client jumps there (late join)
 	constexpr float NetSnapDistance = 500.f;
 	constexpr double NetSnapGaitPhase = 1.5;
@@ -390,7 +390,7 @@ void AMP_Mech::BuildStructureIgnoring(const AActor* Ignored)
 	{
 		const bool bOnHead = Pane.Part == EMP_MechPart::Head && HeadShape.bValid;
 		const FVector Center = (Pane.Min + Pane.Max) * 0.5 - (bOnHead ? HeadShape.Pivot : FVector::ZeroVector);
-		(bOnHead ? HeadGlass : Glass)->AddInstance(FTransform(FRotator::ZeroRotator, Center, (Pane.Max - Pane.Min) / CubeSize));
+		(bOnHead ? HeadGlass : Glass)->AddInstance(FTransform(FRotator::ZeroRotator, Center, (Pane.Max - Pane.Min) / MechCubeSize));
 	}
 
 	//Moving parts at rest on their pivots, their pieces relative to it. What hangs on a pivot stays where it is when the pivot moves
@@ -476,7 +476,7 @@ void AMP_Mech::AddPlate(const FMP_MechArmor& Plate, const TArray<FMP_MechBox>& A
 {
 	auto AddInstance = [&](const FRotator& Rotation, const FVector& Center, const FVector& Size)
 	{
-		const int32 Index = Target->AddInstance(FTransform(Rotation, Center - Origin, Size / CubeSize));
+		const int32 Index = Target->AddInstance(FTransform(Rotation, Center - Origin, Size / MechCubeSize));
 		Target->SetCustomData(Index, { Plate.Color.R, Plate.Color.G, Plate.Color.B, Plate.Emissive });
 	};
 	//Tilted plates (slopes, slides) stay whole
@@ -776,7 +776,7 @@ void AMP_Mech::BuildPart(EMP_MechPart Part, const TArray<FMP_MechBox>& AllCaviti
 				}
 				const FVector Min(Xs[I], Ys[J], Zs[K]);
 				const FVector Max(Xs[I2 + 1], Ys[J2 + 1], Zs[K2 + 1]);
-				Instances.Add(FTransform(FRotator::ZeroRotator, (Min + Max) * 0.5 - Origin, (Max - Min) / CubeSize));
+				Instances.Add(FTransform(FRotator::ZeroRotator, (Min + Max) * 0.5 - Origin, (Max - Min) / MechCubeSize));
 				InstanceColors.Add(PaintColors[BoxPaint]);
 			}
 		}
@@ -799,7 +799,7 @@ void AMP_Mech::BuildPart(EMP_MechPart Part, const TArray<FMP_MechBox>& AllCaviti
 		const FVector Normal = FRotationMatrix(Rotation).GetUnitAxis(EAxis::Z);
 		constexpr double Sink = 40.0;
 		const FVector Center = (Ramp.Start + Ramp.End) * 0.5 - Direction * Sink * 0.5 - Normal * Ramp.Thickness * 0.5;
-		Instances.Add(FTransform(Rotation, Center - Origin, FVector(Length + Sink, Ramp.Width, Ramp.Thickness) / CubeSize));
+		Instances.Add(FTransform(Rotation, Center - Origin, FVector(Length + Sink, Ramp.Width, Ramp.Thickness) / MechCubeSize));
 		const int32* ZoneIndex = ZoneIndices.Find(Ramp.Zone);
 		InstanceColors.Add(ZoneIndex ? Zones[*ZoneIndex].FloorColor : Data->Color);
 	}
@@ -830,39 +830,83 @@ void AMP_Mech::ApplyLook()
 	}
 }
 
-bool AMP_Mech::IsInsideStructure(const FVector& LocalPoint) const
+void AMP_Mech::CarryPhysicsBodies(const FTransform& OldTransform, TConstArrayView<FTransform> OldPivotTransforms)
 {
-	for (const FMP_MechBox& Block : SolidBlocks)
+	//Each part in the world before and after: 0 the body, then the moving parts (their pivots hang on the root)
+	FTransform OldParts[MovingPartCount + 1];
+	FTransform NewParts[MovingPartCount + 1];
+	OldParts[0] = OldTransform;
+	NewParts[0] = GetActorTransform();
+	bool bMoved = !OldParts[0].Equals(NewParts[0], 0.001);
+	for (int32 Index = 0; Index < MovingPartCount; ++Index)
 	{
-		if (FBox(Block.Min, Block.Max).IsInsideOrOn(LocalPoint))
+		const FTransform Pivot = GetMovingPivotComponent(Index)->GetRelativeTransform();
+		OldParts[Index + 1] = OldPivotTransforms[Index] * OldTransform;
+		NewParts[Index + 1] = Pivot * NewParts[0];
+		bMoved |= !OldPivotTransforms[Index].Equals(Pivot, 0.0001);
+	}
+	if (!bMoved)
+	{
+		return;
+	}
+
+	//Within any part's structure (the legs, arms and head have their own)
+	const UInstancedStaticMeshComponent* Structures[MovingPartCount + 1] = { Structure, LeftLegStructure, RightLegStructure, LeftArmStructure, RightArmStructure, HeadStructure };
+	FBox Bounds(ForceInit);
+	for (const UInstancedStaticMeshComponent* PartStructure : Structures)
+	{
+		if (PartStructure->GetInstanceCount() > 0)
 		{
-			return true;
+			Bounds += PartStructure->Bounds.GetBox();
 		}
 	}
-	return false;
-}
-
-void AMP_Mech::CarryPhysicsBodies(const FTransform& OldTransform, const FTransform& NewTransform)
-{
-	const FBoxSphereBounds Bounds = Structure->Bounds;
+	if (!Bounds.IsValid)
+	{
+		return;
+	}
 	FCollisionObjectQueryParams ObjectParams;
 	ObjectParams.AddObjectTypesToQuery(ECC_PhysicsBody);
 	ObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(MechCarry), false, this);
 	TArray<FOverlapResult> Overlaps;
-	GetWorld()->OverlapMultiByObjectType(Overlaps, Bounds.Origin, FQuat::Identity, ObjectParams, FCollisionShape::MakeBox(Bounds.BoxExtent), Params);
+	GetWorld()->OverlapMultiByObjectType(Overlaps, Bounds.GetCenter(), FQuat::Identity, ObjectParams, FCollisionShape::MakeBox(Bounds.GetExtent()), Params);
 
-	//Each body keeps its place relative to the mech (a ragdoll overlaps once per bone)
+	//The part whose solids held the point before the move, tested in its rest pose (a moving part's frame placed at its pivot)
+	auto FindPart = [this, &OldParts, OldPivotTransforms](const FVector& WorldPoint)
+	{
+		FVector RestPoints[MovingPartCount + 1];
+		RestPoints[0] = OldParts[0].InverseTransformPosition(WorldPoint);
+		for (int32 Index = 0; Index < MovingPartCount; ++Index)
+		{
+			RestPoints[Index + 1] = OldPivotTransforms[Index].GetLocation() + OldParts[Index + 1].InverseTransformPosition(WorldPoint);
+		}
+		for (const FMP_MechBox& Block : SolidBlocks)
+		{
+			const int32 PartIndex = Block.Part == EMP_MechPart::Body ? 0 : MovingIndexOf(Block.Part) + 1;
+			if (PartIndex >= 0 && FBox(Block.Min, Block.Max).IsInsideOrOn(RestPoints[PartIndex]))
+			{
+				return PartIndex;
+			}
+		}
+		return static_cast<int32>(INDEX_NONE);
+	};
+
+	//Each body keeps its place relative to its part (a ragdoll overlaps once per bone)
 	TSet<UPrimitiveComponent*> Carried;
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
 		UPrimitiveComponent* Component = Overlap.GetComponent();
-		if (!Component || Carried.Contains(Component) || !Component->IsSimulatingPhysics() || !IsInsideStructure(OldTransform.InverseTransformPosition(Component->GetComponentLocation())))
+		if (!Component || Carried.Contains(Component) || !Component->IsSimulatingPhysics())
+		{
+			continue;
+		}
+		const int32 PartIndex = FindPart(Component->GetComponentLocation());
+		if (PartIndex == INDEX_NONE)
 		{
 			continue;
 		}
 		Carried.Add(Component);
-		Component->SetWorldTransform(Component->GetComponentTransform().GetRelativeTransform(OldTransform) * NewTransform, false, nullptr, ETeleportType::TeleportPhysics);
+		Component->SetWorldTransform(Component->GetComponentTransform().GetRelativeTransform(OldParts[PartIndex]) * NewParts[PartIndex], false, nullptr, ETeleportType::TeleportPhysics);
 	}
 }
 
@@ -1000,7 +1044,7 @@ bool AMP_Mech::GatherBlocks(const AActor* Ignored)
 	{
 		const FName Name(*Block->GetActorLabel());
 		const FTransform BoxTransform = Block->GetBoxTransform(MechTransform);
-		const FVector Size = BoxTransform.GetScale3D() * CubeSize;
+		const FVector Size = BoxTransform.GetScale3D() * MechCubeSize;
 		switch (Block->Type)
 		{
 		case EMP_MechBlockType::Solid:
@@ -1236,7 +1280,8 @@ void AMP_Mech::UpdateArms(float DeltaSeconds)
 		FQuat Target = FQuat::Identity;
 		const AMP_WeaponStation* Station = ArmStations[Index].Get();
 		const bool bManned = Station && Station->GetUser();
-		if (Data->bAimArms && (bManned || bDebugArmAim))
+		const bool bAiming = Data->bAimArms && (bManned || bDebugArmAim);
+		if (bAiming)
 		{
 			const FVector Aim = bManned ? FRotator(0.f, -SimYaw, 0.f).RotateVector(Station->GetAimRotation().Vector()) : DebugArmAim.Vector();
 			const FVector Flat = FVector(Aim.X, Aim.Y, 0.f).GetSafeNormal();
@@ -1246,7 +1291,21 @@ void AMP_Mech::UpdateArms(float DeltaSeconds)
 			Target = FQuat(FVector::UpVector, FMath::DegreesToRadians(FMath::Clamp(Yaw, -Data->ArmMaxYaw, Data->ArmMaxYaw)))
 				* FQuat(LiftAxis, FMath::DegreesToRadians(FMath::Clamp(Elevation, -Data->ArmMaxPitchDown, Data->ArmMaxPitchUp)));
 		}
-		ArmRotations[Index] = FMath::QInterpConstantTo(ArmRotations[Index], Target, DeltaSeconds, FMath::DegreesToRadians(Data->ArmTurnSpeed));
+		//Eased: speeds up and brakes at ArmAcceleration; a still arm holds while its gunner aims within ArmDeadZone of it
+		const float Remaining = FMath::RadiansToDegrees(ArmRotations[Index].AngularDistance(Target));
+		const bool bHold = bAiming && ArmSpeeds[Index] <= 0.f && Remaining < Data->ArmDeadZone;
+		const float WantedSpeed = bHold ? 0.f : FMath::Min(Data->ArmTurnSpeed, FMath::Sqrt(2.f * Data->ArmAcceleration * Remaining));
+		ArmSpeeds[Index] = FMath::FInterpConstantTo(ArmSpeeds[Index], WantedSpeed, DeltaSeconds, Data->ArmAcceleration);
+		const float Step = ArmSpeeds[Index] * DeltaSeconds;
+		if (Step >= Remaining)
+		{
+			ArmRotations[Index] = Target;
+			ArmSpeeds[Index] = 0.f;
+		}
+		else if (Step > 0.f)
+		{
+			ArmRotations[Index] = FQuat::Slerp(ArmRotations[Index], Target, Step / Remaining);
+		}
 		Pivot->SetRelativeRotation(ArmRotations[Index]);
 	}
 }
@@ -1432,6 +1491,14 @@ void AMP_Mech::Tick(float DeltaSeconds)
 	LastYawDelta = YawStep;
 	UpdateGait(DeltaSeconds);
 
+	//Each part's pose before this move, to carry the loose bodies inside
+	const FTransform OldTransform = GetActorTransform();
+	FTransform OldPivots[MovingPartCount];
+	for (int32 Index = 0; Index < MovingPartCount; ++Index)
+	{
+		OldPivots[Index] = GetMovingPivotComponent(Index)->GetRelativeTransform();
+	}
+
 	//Legs swing from the hips, the body rocks and bobs over them
 	float LeftSwing = 0.f;
 	float RightSwing = 0.f;
@@ -1444,15 +1511,14 @@ void AMP_Mech::Tick(float DeltaSeconds)
 	UpdateArms(DeltaSeconds);
 	UpdateHead(DeltaSeconds);
 
-	//Attached pieces follow, players standing inside move with their base, loose bodies are carried
+	//Attached pieces follow, players standing inside move with their base, loose bodies are carried by their part
 	if (!GetActorTransform().Equals(NewTransform, 0.001))
 	{
-		const FTransform OldTransform = GetActorTransform();
 		SetActorTransform(NewTransform);
-		if (Data->bCarryPhysicsBodies)
-		{
-			CarryPhysicsBodies(OldTransform, GetActorTransform());
-		}
+	}
+	if (Data->bCarryPhysicsBodies)
+	{
+		CarryPhysicsBodies(OldTransform, MakeArrayView(OldPivots, MovingPartCount));
 	}
 
 	if (HasAuthority())

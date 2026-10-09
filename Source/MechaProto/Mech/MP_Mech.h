@@ -349,6 +349,8 @@ protected:
 	float HeadYaw = 0.f;
 	TWeakObjectPtr<AMP_LookoutStation> HeadStation;
 	FQuat ArmRotations[2] = { FQuat::Identity, FQuat::Identity };
+	//Current swing speed of each arm, deg/s
+	float ArmSpeeds[2] = { 0.f, 0.f };
 	//The weapon station in each arm, whose aim the arm follows
 	TWeakObjectPtr<AMP_WeaponStation> ArmStations[2];
 	float ArmSearchTimer = 0.f;
@@ -398,9 +400,9 @@ protected:
 
 	void ApplyLook();
 	void ShowDebug() const;
-	//Moves the loose physics bodies inside by the mech's last move
-	void CarryPhysicsBodies(const FTransform& OldTransform, const FTransform& NewTransform);
-	bool IsInsideStructure(const FVector& LocalPoint) const;
+	//Moves the loose physics bodies inside by the last move of the part holding them (body, legs, arms, head)
+	//OldPivotTransforms: each moving part's pivot relative to the root before the move
+	void CarryPhysicsBodies(const FTransform& OldTransform, TConstArrayView<FTransform> OldPivotTransforms);
 
 	//Simulation, every machine
 	FVector SimLocation = FVector::ZeroVector;

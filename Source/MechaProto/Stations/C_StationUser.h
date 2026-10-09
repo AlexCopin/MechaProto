@@ -33,6 +33,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Station")
 	bool IsManning() const { return Station != nullptr; }
 
+	//On the user's machine at a weapon station: 0 just fired, 1 ready to fire again (1 elsewhere)
+	UFUNCTION(BlueprintPure, Category = "Station")
+	float GetFireReadyPercent() const;
+
 	//Server
 	void EnterStation(AMP_Station* NewStation);
 	void LeaveStation();

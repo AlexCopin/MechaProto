@@ -155,7 +155,16 @@ void AMP_WeaponStation::ServerFire(const FVector& AimPoint)
 
 	AimAt(AimPoint);
 	const FVector MuzzleLocation = Muzzle->GetComponentLocation();
-	FVector Direction = (AimPoint - MuzzleLocation).GetSafeNormal();
+
+	//A falling projectile is aimed above the point by its drop over the flight, so it lands where the crosshair is
+	FVector Target = AimPoint;
+	const float Gravity = -GetWorld()->GetGravityZ() * Data->ProjectileGravityScale;
+	for (int32 Pass = 0; Pass < 2 && Gravity > 0.f; ++Pass)
+	{
+		const float FlightTime = FVector::Dist(MuzzleLocation, Target) / Data->ProjectileSpeed;
+		Target = AimPoint + FVector(0.f, 0.f, 0.5f * Gravity * FMath::Square(FlightTime));
+	}
+	FVector Direction = (Target - MuzzleLocation).GetSafeNormal();
 	if (Direction.IsNearlyZero() || FVector::DotProduct(Direction, Muzzle->GetForwardVector()) < 0.f)
 	{
 		Direction = Muzzle->GetForwardVector();
