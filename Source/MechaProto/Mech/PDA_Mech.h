@@ -2,9 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "MP_MechStepShake.h"
 #include "PDA_Mech.generated.h"
 
+class UCameraShakeBase;
 class UMaterialInterface;
+class USoundBase;
 
 //Mech walking and look, read live so it can be edited during PIE
 UCLASS(BlueprintType)
@@ -47,6 +50,79 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Look")
 	TObjectPtr<UMaterialInterface> GlassMaterial;
 
+	//-----Gait: straight legs swinging from the hip, the body rocking onto the standing foot. The cadence stays the same at any speed,
+	//the stride follows the speed so the standing foot stays planted
+	//Off, the mech glides with straight legs
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gait")
+	bool bAnimateWalk = true;
+
+	//How far each leg swings forward and back at full speed
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gait", meta = (ClampMin = "0", UIMax = "30", Units = "Degrees"))
+	float SwingAngle = 10.f;
+
+	//Side rock onto the standing foot's outer edge, lifting the swinging foot off the ground
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gait", meta = (ClampMin = "0", UIMax = "10", Units = "Degrees"))
+	float WaddleRoll = 2.5f;
+
+	//Turning in place steps too: the hips' speed at this distance from the center counts as walking
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gait", meta = (ClampMin = "0", UIMax = "3000", Units = "cm"))
+	float TurnStepRadius = 750.f;
+
+	//How fast the stride follows a speed change
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gait", meta = (ClampMin = "0.1", UIMax = "10"))
+	float GaitBlendSpeed = 2.f;
+
+	//-----Arms: each one swings from its shoulder toward where its gunner aims (the gun on the fist aims exactly), back to rest without one
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms")
+	bool bAimArms = true;
+
+	//Forward and back from their rest, straight out to the side
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "0", ClampMax = "90", Units = "Degrees"))
+	float ArmMaxYaw = 35.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "0", ClampMax = "80", Units = "Degrees"))
+	float ArmMaxPitchUp = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "0", ClampMax = "80", Units = "Degrees"))
+	float ArmMaxPitchDown = 30.f;
+
+	//Heavy: slower than the gun on its fist
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "1", UIMax = "180", Units = "DegreesPerSecond"))
+	float ArmTurnSpeed = 20.f;
+
+	//-----Head: turns on the neck toward where the lookout aims (its searchlight in front), back to facing forward without one
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Head")
+	bool bTurnHead = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Head", meta = (ClampMin = "1", UIMax = "360", Units = "DegreesPerSecond"))
+	float HeadTurnSpeed = 45.f;
+
+	//-----Footsteps: each landing foot shakes the local cameras (stronger near that foot) and plays FootstepSound, on every machine
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Footsteps")
+	TSubclassOf<UCameraShakeBase> FootstepShake = UMP_MechStepShake::StaticClass();
+
+	//At full stride within FootstepInnerRadius of the foot (a smaller stride shakes less)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Footsteps", meta = (ClampMin = "0", UIMax = "5"))
+	float FootstepShakeScale = 1.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Footsteps", meta = (ClampMin = "0", UIMax = "10000", Units = "cm"))
+	float FootstepInnerRadius = 1500.f;
+
+	//From FootstepInnerRadius to here the shake fades to FootstepFarScale, which stays beyond (the head still feels it)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Footsteps", meta = (ClampMin = "0", UIMax = "20000", Units = "cm"))
+	float FootstepOuterRadius = 5000.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Footsteps", meta = (ClampMin = "0", ClampMax = "1"))
+	float FootstepFarScale = 0.35f;
+
+	//Below this stride (0-1 of the full one) a landing foot is silent
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Footsteps", meta = (ClampMin = "0", ClampMax = "1"))
+	float MinStepWeight = 0.15f;
+
+	//Thud at the landing foot (none yet)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Footsteps")
+	TObjectPtr<USoundBase> FootstepSound;
+
 	//-----Carry
 	//Loose physics bodies inside the mech (items, ragdolls, corpses) move with it; moving the structure alone slides it under them
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Carry")
@@ -62,7 +138,7 @@ public:
 	float NetCorrectionSpeed = 4.f;
 
 	//-----Debug
-	//Speed and turn rate on every screen
+	//Speed, turn rate and stride on every screen
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Debug")
 	bool bShowDebug = true;
 };

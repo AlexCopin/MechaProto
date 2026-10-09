@@ -149,6 +149,11 @@ FVector AMP_HullPlate::GetPointInFront(float Distance, float Up, float Side) con
 	return GetActorLocation() + GetActorForwardVector() * Distance + GetActorRightVector() * Side + GetActorUpVector() * Up;
 }
 
+FBox AMP_HullPlate::GetOpeningBox() const
+{
+	return FBox(FVector(-Thickness * 0.5f, -Width * 0.5f, 0.f), FVector(Thickness * 0.5f, Width * 0.5f, Height));
+}
+
 float AMP_HullPlate::GetWidth() const
 {
 	return Width * GetActorScale3D().Y;

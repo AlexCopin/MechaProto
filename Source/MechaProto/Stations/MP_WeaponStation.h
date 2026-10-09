@@ -21,8 +21,11 @@ public:
 	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void PostInitializeComponents() override;
 	virtual const UPDA_Station* GetBaseStationData() const override;
-	//From the turret: the camera follows the gun (UPDA_Station::CameraOffset is from the turret here)
-	virtual FVector GetCameraPivot() const override;
+	//Centered on the gun: the camera turns around it and follows it (UPDA_Station::CameraOffset from the gun, in its yaw, Z straight up)
+	virtual FVector GetCameraPivotLocation() const override;
+
+	//Where the gun points (world): the user's aim, smoothed from the replicated one on the other machines
+	FRotator GetAimRotation() const { return TurretAim; }
 
 	UFUNCTION(BlueprintPure, Category = "Station")
 	const UPDA_WeaponStation* GetStationData() const;
@@ -69,7 +72,7 @@ protected:
 	TObjectPtr<UPDA_WeaponStation> StationData;
 
 	//Turret (gun, muzzle) from the station's origin: out of the hull for an arm gun
-	UPROPERTY(EditAnywhere, Category = "Station")
+	UPROPERTY(EditAnywhere, Category = "Station", meta = (MakeEditWidget = true))
 	FVector TurretOffset = FVector(0.f, 0.f, 140.f);
 
 	//The user sits behind the gun and turns with it. Off: seated at the station (a console in front), aiming the remote turret

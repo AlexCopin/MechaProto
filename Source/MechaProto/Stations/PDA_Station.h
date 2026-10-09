@@ -21,9 +21,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (ClampMin = "0", UIMax = "6000", Units = "cm"))
 	float CameraDistance = 500.f;
 
-	//Pivot of the camera arm from the station's origin (on the floor)
+	//Pivot of the camera arm from the station's origin (on the floor); a weapon station's from its gun, the lookout's from its lamp (Z straight up)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera")
 	FVector CameraOffset = FVector(0.f, 0.f, 220.f);
+
+	//Narrower zooms in
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (ClampMin = "10", ClampMax = "120", Units = "Degrees"))
+	float CameraFieldOfView = 90.f;
 
 	//Pulls the camera in front of walls. Off: it goes through the mech's walls and sees outside
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera")

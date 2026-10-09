@@ -1,4 +1,5 @@
 #include "C_StationUser.h"
+#include "MP_LookoutStation.h"
 #include "MP_PilotStation.h"
 #include "MP_WeaponStation.h"
 #include "C_Ragdoll.h"
@@ -223,6 +224,10 @@ void UC_StationUser::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 	{
 		TickPilot(Pilot);
 	}
+	else if (AMP_LookoutStation* Lookout = Cast<AMP_LookoutStation>(Station))
+	{
+		TickLookout(Lookout, DeltaTime);
+	}
 	PendingDriveInput = FVector2D::ZeroVector;
 }
 
@@ -283,11 +288,31 @@ void UC_StationUser::TickWeapon(AMP_WeaponStation* Weapon, float DeltaTime)
 	}
 }
 
+void UC_StationUser::TickLookout(AMP_LookoutStation* Lookout, float DeltaTime)
+{
+	//The beam follows the view at once, the others get it like a gun's aim
+	const FVector AimPoint = Lookout->ComputeAimPoint();
+	Lookout->AimAt(AimPoint);
+	if (!GetOwner()->HasAuthority())
+	{
+		AimSendTimer -= DeltaTime;
+		if (AimSendTimer <= 0.f)
+		{
+			AimSendTimer = 0.1f;
+			Server_SetAim(AimPoint);
+		}
+	}
+}
+
 void UC_StationUser::Server_SetAim_Implementation(FVector_NetQuantize AimPoint)
 {
 	if (AMP_WeaponStation* Weapon = Cast<AMP_WeaponStation>(Station))
 	{
 		Weapon->AimAt(AimPoint);
+	}
+	else if (AMP_LookoutStation* Lookout = Cast<AMP_LookoutStation>(Station))
+	{
+		Lookout->AimAt(AimPoint);
 	}
 }
 

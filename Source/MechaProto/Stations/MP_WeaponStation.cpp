@@ -63,9 +63,10 @@ void AMP_WeaponStation::ApplyMount()
 	BaseMesh->SetRelativeScale3D(FVector(0.4f, 0.9f, 0.9f));
 }
 
-FVector AMP_WeaponStation::GetCameraPivot() const
+FVector AMP_WeaponStation::GetCameraPivotLocation() const
 {
-	return TurretYaw->GetRelativeLocation() + GetStationData()->CameraOffset;
+	const FVector Offset = GetStationData()->CameraOffset;
+	return TurretPitch->GetComponentLocation() + TurretYaw->GetComponentQuat().RotateVector(FVector(Offset.X, Offset.Y, 0.f)) + FVector(0.f, 0.f, Offset.Z);
 }
 
 void AMP_WeaponStation::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const

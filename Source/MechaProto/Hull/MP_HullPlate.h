@@ -60,6 +60,8 @@ public:
 	float GetWidth() const;
 	float GetHeight() const;
 	float GetThickness() const;
+	//The opening it closes, in its own space (before the actor's scale): X across the wall, Y the width, Z up from the origin
+	FBox GetOpeningBox() const;
 
 protected:
 	UPROPERTY(VisibleAnywhere, Category = "Components")

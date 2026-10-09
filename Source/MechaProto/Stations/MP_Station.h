@@ -34,8 +34,11 @@ public:
 	//Name, camera and pose (the child's data asset)
 	virtual const UPDA_Station* GetBaseStationData() const;
 
-	//Camera arm pivot from the station's origin
-	virtual FVector GetCameraPivot() const;
+	//Camera arm pivot in the world: CameraOffset from the station's origin (a weapon station pivots on its gun, the lookout on its lamp)
+	virtual FVector GetCameraPivotLocation() const;
+
+	//Camera arm length (CameraDistance; the lookout picks it from its view)
+	virtual float GetCameraDistance() const;
 
 	UFUNCTION(BlueprintPure, Category = "Station")
 	ACharacter* GetUser() const { return User; }

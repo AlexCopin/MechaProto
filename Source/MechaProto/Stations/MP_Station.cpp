@@ -88,9 +88,14 @@ const UPDA_Station* AMP_Station::GetBaseStationData() const
 	return GetDefault<UPDA_Station>();
 }
 
-FVector AMP_Station::GetCameraPivot() const
+float AMP_Station::GetCameraDistance() const
 {
-	return GetBaseStationData()->CameraOffset;
+	return GetBaseStationData()->CameraDistance;
+}
+
+FVector AMP_Station::GetCameraPivotLocation() const
+{
+	return Root->GetComponentTransform().TransformPosition(GetBaseStationData()->CameraOffset);
 }
 
 void AMP_Station::Tick(float DeltaSeconds)
@@ -98,9 +103,10 @@ void AMP_Station::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	const UPDA_Station* Data = GetBaseStationData();
-	CameraArm->TargetArmLength = Data->CameraDistance;
-	CameraArm->SetRelativeLocation(GetCameraPivot());
+	CameraArm->TargetArmLength = GetCameraDistance();
+	CameraArm->SetWorldLocation(GetCameraPivotLocation());
 	CameraArm->bDoCollisionTest = Data->bCameraCollision;
+	Camera->SetFieldOfView(Data->CameraFieldOfView);
 
 	//The user's mouse turns the camera
 	if (IsLocallyUsed())

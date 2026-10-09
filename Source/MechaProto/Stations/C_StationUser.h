@@ -4,6 +4,7 @@
 #include "Components/ActorComponent.h"
 #include "C_StationUser.generated.h"
 
+class AMP_LookoutStation;
 class AMP_PilotStation;
 class AMP_Station;
 class AMP_WeaponStation;
@@ -80,6 +81,7 @@ protected:
 	//Local user, each frame
 	void TickWeapon(AMP_WeaponStation* Weapon, float DeltaTime);
 	void TickPilot(AMP_PilotStation* Pilot);
+	void TickLookout(AMP_LookoutStation* Lookout, float DeltaTime);
 
 	TWeakObjectPtr<AMP_Station> AppliedStation;
 	TWeakObjectPtr<UAnimMontage> ManningMontage;
