@@ -1,5 +1,6 @@
 #include "MP_Item.h"
 #include "C_ItemHolder.h"
+#include "MP_Mech.h"
 #include "MechaProtoCharacter.h"
 #include "PDA_Interaction.h"
 #include "PDA_Item.h"
@@ -50,6 +51,52 @@ void AMP_Item::BeginPlay()
 	if (HasAuthority())
 	{
 		Mesh->OnComponentHit.AddDynamic(this, &AMP_Item::OnMeshHit);
+
+		//Its start spot, on the part of the mech holding it
+		const AMP_Mech* Mech = AMP_Mech::FindMech(this);
+		USceneComponent* Part = Mech ? Mech->FindPartComponentAt(GetActorLocation()) : nullptr;
+		if (Mech && !Part)
+		{
+			Part = Mech->GetRootComponent();
+		}
+		HomeParent = Part;
+		HomeRelative = Part ? GetActorTransform().GetRelativeTransform(Part->GetComponentTransform()) : GetActorTransform();
+	}
+}
+
+FTransform AMP_Item::GetHomeTransform() const
+{
+	const USceneComponent* Parent = HomeParent.Get();
+	return Parent ? HomeRelative * Parent->GetComponentTransform() : HomeRelative;
+}
+
+void AMP_Item::ReturnHome()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	if (Holder)
+	{
+		if (UC_ItemHolder* ItemHolder = Holder->FindComponentByClass<UC_ItemHolder>())
+		{
+			ItemHolder->Drop();
+		}
+	}
+
+	SetActorTransform(GetHomeTransform(), false, nullptr, ETeleportType::TeleportPhysics);
+	Mesh->SetPhysicsLinearVelocity(FVector::ZeroVector);
+	Mesh->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+	ThrownBy = nullptr;
+	ForceNetUpdate();
+}
+
+void AMP_Item::FellOutOfWorld(const UDamageType& DamageType)
+{
+	//Clients follow the server's copy
+	if (HasAuthority())
+	{
+		ReturnHome();
 	}
 }
 

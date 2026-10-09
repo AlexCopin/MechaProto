@@ -2,6 +2,7 @@
 
 
 #include "MechaProtoPlayerController.h"
+#include "C_Pinger.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
@@ -27,6 +28,18 @@ AMechaProtoPlayerController::AMechaProtoPlayerController()
 {
 	// set the player camera manager class
 	PlayerCameraManagerClass = AMechaProtoCameraManager::StaticClass();
+
+	Pinger = CreateDefaultSubobject<UC_Pinger>(TEXT("Pinger"));
+}
+
+void AMechaProtoPlayerController::OnPingStarted()
+{
+	Pinger->RequestPing();
+}
+
+void AMechaProtoPlayerController::DebugPing()
+{
+	Pinger->RequestPing();
 }
 
 void AMechaProtoPlayerController::BeginPlay()
@@ -84,6 +97,10 @@ void AMechaProtoPlayerController::SetupInputComponent()
 		{
 			EnhancedInput->BindAction(PushToTalkAction, ETriggerEvent::Started, this, &AMechaProtoPlayerController::OnPushToTalkStarted);
 			EnhancedInput->BindAction(PushToTalkAction, ETriggerEvent::Completed, this, &AMechaProtoPlayerController::OnPushToTalkCompleted);
+		}
+		if (EnhancedInput && PingAction)
+		{
+			EnhancedInput->BindAction(PingAction, ETriggerEvent::Started, this, &AMechaProtoPlayerController::OnPingStarted);
 		}
 	}
 	

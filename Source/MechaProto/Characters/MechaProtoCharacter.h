@@ -21,6 +21,7 @@ class UC_Interactor;
 class UC_StationUser;
 class UC_ItemHolder;
 class UC_PlayerStats;
+class UC_PlayerRecovery;
 class AMP_Station;
 struct FInputActionValue;
 
@@ -71,6 +72,10 @@ class AMechaProtoCharacter : public ACharacter
 	//This player's voice comes from the head, it follows the body when ragdolled
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UC_ProximityVoice> ProximityVoice;
+
+	//Back aboard the mech after a while outside it
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UC_PlayerRecovery> PlayerRecovery;
 
 protected:
 
@@ -213,6 +218,8 @@ protected:
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
+	//Back aboard (UC_PlayerRecovery) instead of being destroyed
+	virtual void FellOutOfWorld(const UDamageType& DamageType) override;
 
 	//Lowers the first person view while sliding (owner only)
 	void UpdateSlideCamera(float DeltaSeconds);

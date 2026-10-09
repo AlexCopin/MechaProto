@@ -212,6 +212,22 @@ public:
 	//A moving part's pivot (leg's hip, arm's shoulder): what is inside that part attaches to it (ladders, plates, lights, signs, stations)
 	USceneComponent* GetPartPivot(EMP_MechPart Part) const;
 
+	//The mech in this world (there is one), null without
+	static AMP_Mech* FindMech(const UObject* WorldContextObject);
+
+	//Standing on or in the mech: the first world static thing under the point within Depth is the mech or attached to it (not the ground)
+	bool IsOnMech(const FVector& WorldPoint, float Depth) const;
+
+	//The part whose solids hold this point now (the root for the body, a moving part's pivot), null outside
+	USceneComponent* FindPartComponentAt(const FVector& WorldPoint) const;
+
+	//The windows: the body's glass and the head's panoramic band
+	void GetSeeThroughComponents(TArray<UPrimitiveComponent*>& OutComponents) const;
+
+	//Server, tests: every standing player and loose item lands on the ground 30 m behind the mech (console: ke * DebugEject)
+	UFUNCTION(BlueprintCallable, Category = "Mech")
+	void DebugEject();
+
 	//A foot landed (every machine), after the camera shake and the sound: for effects. Strength is the stride, 0-1
 	UFUNCTION(BlueprintImplementableEvent, Category = "Mech")
 	void OnFootstep(bool bLeftFoot, FVector Location, float Strength);
@@ -403,6 +419,9 @@ protected:
 	//Moves the loose physics bodies inside by the last move of the part holding them (body, legs, arms, head)
 	//OldPivotTransforms: each moving part's pivot relative to the root before the move
 	void CarryPhysicsBodies(const FTransform& OldTransform, TConstArrayView<FTransform> OldPivotTransforms);
+	//The part whose solids hold a world point (0 body, 1+ moving parts), INDEX_NONE outside, tested in its rest pose
+	//PartTransforms: each part in the world (body first), PivotTransforms: each moving part's pivot relative to the root
+	int32 FindPartIndex(const FVector& WorldPoint, TConstArrayView<FTransform> PartTransforms, TConstArrayView<FTransform> PivotTransforms) const;
 
 	//Simulation, every machine
 	FVector SimLocation = FVector::ZeroVector;

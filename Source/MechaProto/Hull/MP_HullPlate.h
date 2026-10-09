@@ -53,6 +53,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Hull")
 	bool IsBroken() const { return bBroken; }
 
+	//Hit since its last repair (or broken)
+	UFUNCTION(BlueprintPure, Category = "Hull")
+	bool IsDamaged() const;
+
+	UFUNCTION(BlueprintPure, Category = "Hull")
+	FText GetPlateName() const { return PlateName; }
+
 	FVector GetOutsideDirection() const { return GetActorForwardVector(); }
 	//World point at Distance from the plate's middle plane (> 0 outside, < 0 inside), Up above the bottom of the opening, Side along its width from its center
 	FVector GetPointInFront(float Distance, float Up, float Side) const;

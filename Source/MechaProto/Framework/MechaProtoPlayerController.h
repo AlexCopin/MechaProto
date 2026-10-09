@@ -11,6 +11,7 @@ class UInputAction;
 class UInputMappingContext;
 class UUserWidget;
 class UPDA_Voice;
+class UC_Pinger;
 
 /**
  *  Simple first person Player Controller
@@ -26,6 +27,10 @@ public:
 
 	/** Constructor */
 	AMechaProtoPlayerController();
+
+	//Console, tests: a ping where the view aims
+	UFUNCTION(Exec)
+	void DebugPing();
 
 protected:
 
@@ -48,6 +53,15 @@ protected:
 	/** If true, the player will use UMG touch controls even if not playing on mobile platforms */
 	UPROPERTY(EditAnywhere, Config, Category = "Input|Touch Controls")
 	bool bForceTouchControls = false;
+
+	//-----Ping (middle mouse button): a marker the whole crew sees where this player aims
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components")
+	TObjectPtr<UC_Pinger> Pinger;
+
+	UPROPERTY(EditAnywhere, Category="Input")
+	TObjectPtr<UInputAction> PingAction;
+
+	void OnPingStarted();
 
 	//-----Voice
 	UPROPERTY(EditAnywhere, Category="Voice")

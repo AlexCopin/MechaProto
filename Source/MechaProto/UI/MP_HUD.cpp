@@ -1,4 +1,5 @@
 #include "MP_HUD.h"
+#include "C_PlayerRecovery.h"
 #include "C_Ragdoll.h"
 #include "C_StationUser.h"
 #include "MP_AlertListWidget.h"
@@ -7,10 +8,12 @@
 #include "MP_Breakable.h"
 #include "MP_MainMenuWidget.h"
 #include "MP_PilotStation.h"
+#include "MP_Ping.h"
 #include "MP_PlayerStatsWidget.h"
 #include "MP_WeaponStation.h"
 #include "PDA_Breakable.h"
 #include "PDA_HUD.h"
+#include "PDA_Recovery.h"
 #include "PDA_WeaponStation.h"
 #include "Components/PanelWidget.h"
 #include "Engine/Canvas.h"
@@ -64,10 +67,35 @@ void AMP_HUD::DrawHUD()
 {
 	Super::DrawHUD();
 
-	if (!MainMenuWidget && PlayerOwner && PlayerOwner->IsLocalController())
+	if (!MainMenuWidget && PlayerOwner && PlayerOwner->IsLocalController() && Canvas)
 	{
+		AMP_Ping::DrawPings(*this, *Canvas);
 		DrawCrosshair();
+		DrawOutsideWarning();
 	}
+}
+
+void AMP_HUD::DrawOutsideWarning()
+{
+	const APawn* Pawn = PlayerOwner->GetPawn();
+	const UC_PlayerRecovery* Recovery = Pawn ? Pawn->FindComponentByClass<UC_PlayerRecovery>() : nullptr;
+	const float TimeLeft = Recovery ? Recovery->GetAutoRespawnTimeLeft() : -1.f;
+	if (TimeLeft < 0.f)
+	{
+		return;
+	}
+
+	const UPDA_Recovery* Data = Recovery->GetRecoveryData();
+	const FString Text = FText::Format(Data->OutsideText, FText::AsNumber(FMath::CeilToInt(TimeLeft))).ToString();
+	UFont* Font = GEngine->GetLargeFont();
+	const float Scale = Canvas->ClipY / CrosshairReferenceHeight * Data->OutsideTextScale;
+	float Width = 0.f;
+	float Height = 0.f;
+	GetTextSize(Text, Width, Height, Font, Scale);
+	const float X = (Canvas->ClipX - Width) * 0.5f;
+	const float Y = Canvas->ClipY * 0.3f;
+	DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.55f), X - 14.f * Scale, Y - 6.f * Scale, Width + 28.f * Scale, Height + 12.f * Scale);
+	DrawText(Text, Data->OutsideTextColor, X, Y, Font, Scale);
 }
 
 void AMP_HUD::DrawCrosshair()

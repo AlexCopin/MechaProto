@@ -20,6 +20,8 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void BeginPlay() override;
+	//Back home instead of being destroyed
+	virtual void FellOutOfWorld(const UDamageType& DamageType) override;
 
 	//-----IMP_Interactable
 	virtual bool CanInteract(const ACharacter* User) const override;
@@ -46,6 +48,13 @@ public:
 
 	//Every machine: UseAnimation on the holder's body
 	void PlayUseAnimation();
+
+	//Server: back where it was at the start (out of its holder's hands first), still: recall buttons, fallen out of the world
+	UFUNCTION(BlueprintCallable, Category = "Item")
+	void ReturnHome();
+
+	//Where it was at the start, now: it moves with the part of the mech it was in (hall, leg, arm...)
+	FTransform GetHomeTransform() const;
 
 protected:
 	//Root, simulates physics when not held
@@ -80,6 +89,9 @@ protected:
 	void OnMeshHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 	TWeakObjectPtr<ACharacter> AppliedHolder;
+	//Server: the start spot relative to the mech's part holding it (the world without a mech)
+	TWeakObjectPtr<USceneComponent> HomeParent;
+	FTransform HomeRelative = FTransform::Identity;
 	//Server, while the throw can slap
 	TWeakObjectPtr<ACharacter> ThrownBy;
 	FVector ThrowDirection = FVector::ZeroVector;

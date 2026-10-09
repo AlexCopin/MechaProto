@@ -66,6 +66,8 @@ protected:
 	void ShowMainMenu();
 	//Crosshair, weapon cooldown ring and the broken system of the station (game widgets only)
 	void DrawCrosshair();
+	//The countdown before being brought back aboard, while outside the mech
+	void DrawOutsideWarning();
 	void DrawCooldownRing(const FVector2D& Center, float Scale, float ReadyPercent);
 	//Plays its hide animation, it removes itself after
 	void RemoveAlertAt(int32 Index);

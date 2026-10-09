@@ -71,6 +71,11 @@ void AMP_HullPlate::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 	DOREPLIFETIME(AMP_HullPlate, bBroken);
 }
 
+bool AMP_HullPlate::IsDamaged() const
+{
+	return bBroken || Health < GetPlateData()->MaxHealth;
+}
+
 const UPDA_HullPlate* AMP_HullPlate::GetPlateData() const
 {
 	if (ensureMsgf(PlateData, TEXT("%s has no PlateData, using code defaults"), *GetPathNameSafe(this)))

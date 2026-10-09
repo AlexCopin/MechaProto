@@ -1,6 +1,7 @@
 #include "MP_Mech.h"
 #include "MechaProto.h"
 #include "MP_HullPlate.h"
+#include "MP_Item.h"
 #include "MP_LookoutStation.h"
 #include "MP_MechBlock.h"
 #include "MP_WeaponStation.h"
@@ -12,6 +13,8 @@
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
+#include "EngineUtils.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
@@ -871,27 +874,7 @@ void AMP_Mech::CarryPhysicsBodies(const FTransform& OldTransform, TConstArrayVie
 	TArray<FOverlapResult> Overlaps;
 	GetWorld()->OverlapMultiByObjectType(Overlaps, Bounds.GetCenter(), FQuat::Identity, ObjectParams, FCollisionShape::MakeBox(Bounds.GetExtent()), Params);
 
-	//The part whose solids held the point before the move, tested in its rest pose (a moving part's frame placed at its pivot)
-	auto FindPart = [this, &OldParts, OldPivotTransforms](const FVector& WorldPoint)
-	{
-		FVector RestPoints[MovingPartCount + 1];
-		RestPoints[0] = OldParts[0].InverseTransformPosition(WorldPoint);
-		for (int32 Index = 0; Index < MovingPartCount; ++Index)
-		{
-			RestPoints[Index + 1] = OldPivotTransforms[Index].GetLocation() + OldParts[Index + 1].InverseTransformPosition(WorldPoint);
-		}
-		for (const FMP_MechBox& Block : SolidBlocks)
-		{
-			const int32 PartIndex = Block.Part == EMP_MechPart::Body ? 0 : MovingIndexOf(Block.Part) + 1;
-			if (PartIndex >= 0 && FBox(Block.Min, Block.Max).IsInsideOrOn(RestPoints[PartIndex]))
-			{
-				return PartIndex;
-			}
-		}
-		return static_cast<int32>(INDEX_NONE);
-	};
-
-	//Each body keeps its place relative to its part (a ragdoll overlaps once per bone)
+	//Each body keeps its place relative to the part holding it before the move (a ragdoll overlaps once per bone)
 	TSet<UPrimitiveComponent*> Carried;
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
@@ -900,7 +883,7 @@ void AMP_Mech::CarryPhysicsBodies(const FTransform& OldTransform, TConstArrayVie
 		{
 			continue;
 		}
-		const int32 PartIndex = FindPart(Component->GetComponentLocation());
+		const int32 PartIndex = FindPartIndex(Component->GetComponentLocation(), MakeArrayView(OldParts, MovingPartCount + 1), OldPivotTransforms);
 		if (PartIndex == INDEX_NONE)
 		{
 			continue;
@@ -1173,6 +1156,106 @@ void AMP_Mech::OnEditorPropertyChanged(UObject* Object, FPropertyChangedEvent& E
 	}
 }
 #endif
+
+int32 AMP_Mech::FindPartIndex(const FVector& WorldPoint, TConstArrayView<FTransform> PartTransforms, TConstArrayView<FTransform> PivotTransforms) const
+{
+	//In each part's rest pose: the body's frame, a moving part's frame placed at its pivot
+	FVector RestPoints[MovingPartCount + 1];
+	RestPoints[0] = PartTransforms[0].InverseTransformPosition(WorldPoint);
+	for (int32 Index = 0; Index < MovingPartCount; ++Index)
+	{
+		RestPoints[Index + 1] = PivotTransforms[Index].GetLocation() + PartTransforms[Index + 1].InverseTransformPosition(WorldPoint);
+	}
+	for (const FMP_MechBox& Block : SolidBlocks)
+	{
+		const int32 PartIndex = Block.Part == EMP_MechPart::Body ? 0 : MovingIndexOf(Block.Part) + 1;
+		if (PartIndex >= 0 && FBox(Block.Min, Block.Max).IsInsideOrOn(RestPoints[PartIndex]))
+		{
+			return PartIndex;
+		}
+	}
+	return INDEX_NONE;
+}
+
+USceneComponent* AMP_Mech::FindPartComponentAt(const FVector& WorldPoint) const
+{
+	FTransform Parts[MovingPartCount + 1];
+	FTransform Pivots[MovingPartCount];
+	Parts[0] = GetActorTransform();
+	for (int32 Index = 0; Index < MovingPartCount; ++Index)
+	{
+		Pivots[Index] = GetMovingPivotComponent(Index)->GetRelativeTransform();
+		Parts[Index + 1] = Pivots[Index] * Parts[0];
+	}
+	const int32 PartIndex = FindPartIndex(WorldPoint, MakeArrayView(Parts, MovingPartCount + 1), MakeArrayView(Pivots, MovingPartCount));
+	if (PartIndex == INDEX_NONE)
+	{
+		return nullptr;
+	}
+	return PartIndex == 0 ? Root.Get() : GetMovingPivotComponent(PartIndex - 1);
+}
+
+AMP_Mech* AMP_Mech::FindMech(const UObject* WorldContextObject)
+{
+	const UWorld* World = GEngine ? GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull) : nullptr;
+	if (!World)
+	{
+		return nullptr;
+	}
+	for (TActorIterator<AMP_Mech> It(World); It; ++It)
+	{
+		return *It;
+	}
+	return nullptr;
+}
+
+bool AMP_Mech::IsOnMech(const FVector& WorldPoint, float Depth) const
+{
+	//Walls, floors, glass and portholes; not items, pawns or triggers
+	FHitResult Hit;
+	const FCollisionObjectQueryParams ObjectParams(ECC_WorldStatic);
+	if (!GetWorld()->LineTraceSingleByObjectType(Hit, WorldPoint, WorldPoint - FVector(0.f, 0.f, Depth), ObjectParams, FCollisionQueryParams(SCENE_QUERY_STAT(OnMech), false)))
+	{
+		return false;
+	}
+	const AActor* HitActor = Hit.GetActor();
+	return HitActor && (HitActor == this || HitActor->IsAttachedTo(this));
+}
+
+void AMP_Mech::GetSeeThroughComponents(TArray<UPrimitiveComponent*>& OutComponents) const
+{
+	OutComponents.Add(Glass);
+	OutComponents.Add(HeadGlass);
+}
+
+void AMP_Mech::DebugEject()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	//Side by side on the ground behind it (its origin is on the ground)
+	const FRotator Facing(0.f, SimYaw, 0.f);
+	const FVector Behind = GetActorLocation() - Facing.Vector() * 3000.f;
+	const FVector Side = FRotator(0.f, SimYaw + 90.f, 0.f).Vector();
+	int32 Count = 0;
+	for (TActorIterator<ACharacter> It(GetWorld()); It; ++It)
+	{
+		//Seated players stay
+		if (!It->GetAttachParentActor())
+		{
+			It->TeleportTo(Behind + Side * (Count++ * 150.f) + FVector(0.f, 0.f, 120.f), Facing);
+		}
+	}
+	for (TActorIterator<AMP_Item> It(GetWorld()); It; ++It)
+	{
+		if (!It->GetHolder())
+		{
+			It->SetActorLocation(Behind + Side * (Count++ * 150.f) + FVector(0.f, 0.f, 60.f), false, nullptr, ETeleportType::TeleportPhysics);
+		}
+	}
+}
 
 USceneComponent* AMP_Mech::GetPartPivot(EMP_MechPart Part) const
 {

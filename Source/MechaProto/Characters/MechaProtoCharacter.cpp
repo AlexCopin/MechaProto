@@ -20,6 +20,7 @@
 #include "C_StationUser.h"
 #include "C_ItemHolder.h"
 #include "C_PlayerStats.h"
+#include "C_PlayerRecovery.h"
 #include "PDA_Interaction.h"
 #include "MP_WeaponStation.h"
 #include "MP_Ladder.h"
@@ -82,6 +83,7 @@ AMechaProtoCharacter::AMechaProtoCharacter()
 	StationUser = CreateDefaultSubobject<UC_StationUser>(TEXT("Station User"));
 	ItemHolder = CreateDefaultSubobject<UC_ItemHolder>(TEXT("Item Holder"));
 	PlayerStats = CreateDefaultSubobject<UC_PlayerStats>(TEXT("Player Stats"));
+	PlayerRecovery = CreateDefaultSubobject<UC_PlayerRecovery>(TEXT("Player Recovery"));
 
 	ProximityVoice = CreateDefaultSubobject<UC_ProximityVoice>(TEXT("Proximity Voice"));
 	ProximityVoice->SetupAttachment(GetMesh(), FName("head"));
@@ -434,6 +436,15 @@ void AMechaProtoCharacter::Tick(float DeltaSeconds)
 		UpdateSlideCamera(DeltaSeconds);
 		UpdateLadderCamera(DeltaSeconds);
 		UpdateFieldOfView();
+	}
+}
+
+void AMechaProtoCharacter::FellOutOfWorld(const UDamageType& DamageType)
+{
+	//Clients follow the server's correction
+	if (HasAuthority())
+	{
+		PlayerRecovery->Respawn();
 	}
 }
 

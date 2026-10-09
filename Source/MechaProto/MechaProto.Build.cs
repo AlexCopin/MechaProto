@@ -27,7 +27,8 @@ public class MechaProto : ModuleRules
 			"Niagara"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { });
+		//RenderCore: GWhiteTexture for the HUD's Canvas triangles (pings)
+		PrivateDependencyModuleNames.AddRange(new string[] { "RenderCore" });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"MechaProto",
@@ -45,6 +46,8 @@ public class MechaProto : ModuleRules
 			"MechaProto/Mech",
 			"MechaProto/UI",
 			"MechaProto/Repair",
+			"MechaProto/Recovery",
+			"MechaProto/Ping",
 			"MechaProto/Variant_Horror",
 			"MechaProto/Variant_Horror/UI",
 			"MechaProto/Variant_Shooter",
