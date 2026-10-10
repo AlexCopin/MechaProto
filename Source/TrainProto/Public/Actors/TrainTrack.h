@@ -6,7 +6,7 @@
 #include "TrainTrack.generated.h"
 
 UCLASS()
-class MECHAPROTO_API ATrainTrack : public AActor {
+class TRAINPROTO_API ATrainTrack : public AActor {
 	GENERATED_BODY()
 	
 public:	

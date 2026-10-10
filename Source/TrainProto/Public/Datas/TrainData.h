@@ -5,7 +5,7 @@
 #include "TrainData.generated.h"
 
 UCLASS()
-class MECHAPROTO_API UTrainData : public UDataAsset {
+class TRAINPROTO_API UTrainData : public UDataAsset {
 	GENERATED_BODY()
 
 public:

@@ -9,7 +9,7 @@
 
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
-class MECHAPROTO_API UTrainMovementComponent : public UActorComponent {
+class TRAINPROTO_API UTrainMovementComponent : public UActorComponent {
 	GENERATED_BODY()
 
 public:	

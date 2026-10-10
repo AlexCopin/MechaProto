@@ -25,7 +25,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
  *  A basic first person character
  */
 UCLASS(abstract)
-class AMechaProtoCharacter : public ACharacter
+class MECHAPROTO_API AMechaProtoCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
