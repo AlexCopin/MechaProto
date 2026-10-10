@@ -1,4 +1,6 @@
 .vs/
+.idea/
+.vsconfig
 Binaries/
 DerivedDataCache/
 Intermediate/
@@ -9,5 +11,7 @@ Saved/
 *.VC.db
 *.opensdf
 *.sdf
+*.user
 Plugins/MechaProtoTemp/
 CLAUDE.md
+
