@@ -80,12 +80,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slide")
 	bool bCanJumpOutOfSlide = true;
 
-	//Extra drop of the first person camera while sliding, the slide animation already lowers the head
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slide|Camera", meta = (ClampMin = "0", UIMax = "120", Units = "cm"))
-	float SlideCameraDrop = 0.f;
+	//While sliding and standing up after, the camera rides the body's head (about 80 cm lower in the slide) and the player sees their own
+	//body. Off: the view stays at standing height, the first person mesh's rig (CtrlRig_FPWarp) keeps its head steady
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slide|Camera")
+	bool bSlideCameraFollowsHead = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slide|Camera", meta = (ClampMin = "0", UIMax = "30"))
-	float SlideCameraInterpSpeed = 12.f;
+	//How fast the camera's jump between the steady first person head and the body's head is smoothed out
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slide|Camera", meta = (ClampMin = "1", UIMax = "40"))
+	float SlideCameraBlendSpeed = 10.f;
+
+	//Meanwhile the camera never goes lower than this above the feet (the slide pose puts the head ~65 cm up). 0 = all the way with the head
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slide|Camera", meta = (ClampMin = "0", UIMax = "180", Units = "cm"))
+	float SlideCameraMinHeight = 110.f;
+
+	//Meanwhile the owner doesn't see their body from this bone down its children: the chest, arms and head would be around the camera (the near
+	//plane cuts them) and the slide pose sits the hips right under the head. pelvis = nothing, spine_01 = hips and legs, None = all
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slide|Camera")
+	FName SlideHiddenBone = FName("spine_01");
 
 	//-----Slide animations, played on the body slot (root locked, the movement drives the character)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slide|Animation")

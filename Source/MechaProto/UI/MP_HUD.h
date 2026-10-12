@@ -10,6 +10,7 @@ class UMP_AlertWidget;
 class UMP_MainMenuWidget;
 class UMP_PlayerStatsWidget;
 class UPDA_HUD;
+class AMP_WeaponStation;
 
 //Spawns and owns every widget of its local player: player stats and alerts in game, the main menu in standalone
 //Alerts are global: RaiseAlert / ClearAlert from anywhere reach every local player's HUD
@@ -69,6 +70,8 @@ protected:
 	//The countdown before being brought back aboard, while outside the mech
 	void DrawOutsideWarning();
 	void DrawCooldownRing(const FVector2D& Center, float Scale, float ReadyPercent);
+	//Where a fixed gun's shots would land, while it isn't on the crosshair
+	void DrawGunMarker(const AMP_WeaponStation& Weapon, const FVector2D& Center, float Scale);
 	//Plays its hide animation, it removes itself after
 	void RemoveAlertAt(int32 Index);
 	static void ForEachLocalHUD(const UObject* WorldContextObject, TFunctionRef<void(AMP_HUD&)> Function);

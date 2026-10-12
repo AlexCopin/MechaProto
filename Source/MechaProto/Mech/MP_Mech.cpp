@@ -79,8 +79,9 @@ namespace
 	}
 
 	//Moving parts after the body: 0-1 legs, 2-3 arms
-	constexpr int32 MovingPartCount = 5;
-	constexpr EMP_MechPart MovingParts[MovingPartCount] = { EMP_MechPart::LeftLeg, EMP_MechPart::RightLeg, EMP_MechPart::LeftArm, EMP_MechPart::RightArm, EMP_MechPart::Head };
+	constexpr int32 MovingPartCount = 7;
+	constexpr EMP_MechPart MovingParts[MovingPartCount] = { EMP_MechPart::LeftLeg, EMP_MechPart::RightLeg, EMP_MechPart::LeftArm, EMP_MechPart::RightArm, EMP_MechPart::Head,
+		EMP_MechPart::LeftForearm, EMP_MechPart::RightForearm };
 
 	int32 MovingIndexOf(EMP_MechPart Part)
 	{
@@ -96,6 +97,27 @@ namespace
 
 	//How often an arm looks for the weapon station inside it while it has none
 	constexpr float ArmStationSearchInterval = 1.f;
+	//Aim this close to straight back across the body: the arm keeps the side it is on instead of swinging across
+	constexpr double ArmBehindMargin = 20.0;
+
+	//Eased toward Target: speeds up and brakes at Acceleration; still, it holds while Target is within DeadZone (when bHold)
+	void EaseArmAngle(float& Angle, float& Speed, float Target, bool bHold, float MaxSpeed, float Acceleration, float DeadZone, float DeltaSeconds)
+	{
+		const float Remaining = FMath::Abs(Target - Angle);
+		const bool bStill = bHold && Speed <= 0.f && Remaining < DeadZone;
+		const float WantedSpeed = bStill ? 0.f : FMath::Min(MaxSpeed, FMath::Sqrt(2.f * Acceleration * Remaining));
+		Speed = FMath::FInterpConstantTo(Speed, WantedSpeed, DeltaSeconds, Acceleration);
+		const float Step = Speed * DeltaSeconds;
+		if (Step >= Remaining)
+		{
+			Angle = Target;
+			Speed = 0.f;
+		}
+		else if (Step > 0.f)
+		{
+			Angle += FMath::Sign(Target - Angle) * Step;
+		}
+	}
 
 	//How far outside the wall a porthole cuts the armor, and how deep under it the armor around a room stays
 	constexpr double OpeningArmorReach = 150.0;
@@ -293,6 +315,27 @@ AMP_Mech::AMP_Mech()
 	RightArmArmor->SetupAttachment(RightArmPivot);
 	SetupArmorMesh(RightArmArmor, Cube, Material);
 
+	//Each forearm: a pivot on its arm's (the elbow tilts it) holding its structure and armor
+	LeftForearmPivot = CreateDefaultSubobject<USceneComponent>(TEXT("Left Forearm Pivot"));
+	LeftForearmPivot->SetupAttachment(LeftArmPivot);
+	LeftForearmPivot->SetMobility(EComponentMobility::Movable);
+	LeftForearmStructure = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("Left Forearm Structure"));
+	LeftForearmStructure->SetupAttachment(LeftForearmPivot);
+	SetupStructureMesh(LeftForearmStructure, Cube, Material);
+	LeftForearmArmor = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("Left Forearm Armor"));
+	LeftForearmArmor->SetupAttachment(LeftForearmPivot);
+	SetupArmorMesh(LeftForearmArmor, Cube, Material);
+
+	RightForearmPivot = CreateDefaultSubobject<USceneComponent>(TEXT("Right Forearm Pivot"));
+	RightForearmPivot->SetupAttachment(RightArmPivot);
+	RightForearmPivot->SetMobility(EComponentMobility::Movable);
+	RightForearmStructure = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("Right Forearm Structure"));
+	RightForearmStructure->SetupAttachment(RightForearmPivot);
+	SetupStructureMesh(RightForearmStructure, Cube, Material);
+	RightForearmArmor = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("Right Forearm Armor"));
+	RightForearmArmor->SetupAttachment(RightForearmPivot);
+	SetupArmorMesh(RightForearmArmor, Cube, Material);
+
 	//The head: a pivot on the neck holding its structure, armor and glass
 	HeadPivot = CreateDefaultSubobject<USceneComponent>(TEXT("Head Pivot"));
 	HeadPivot->SetupAttachment(Root);
@@ -377,8 +420,9 @@ void AMP_Mech::BuildStructureIgnoring(const AActor* Ignored)
 		Box.Max = Opening.Box.Max;
 	}
 
-	UInstancedStaticMeshComponent* Structures[MovingPartCount + 1] = { Structure, LeftLegStructure, RightLegStructure, LeftArmStructure, RightArmStructure, HeadStructure };
-	UInstancedStaticMeshComponent* Armors[MovingPartCount + 1] = { Armor, LeftLegArmor, RightLegArmor, LeftArmArmor, RightArmArmor, HeadArmor };
+	UInstancedStaticMeshComponent* Structures[MovingPartCount + 1] = { Structure, LeftLegStructure, RightLegStructure, LeftArmStructure, RightArmStructure, HeadStructure,
+		LeftForearmStructure, RightForearmStructure };
+	UInstancedStaticMeshComponent* Armors[MovingPartCount + 1] = { Armor, LeftLegArmor, RightLegArmor, LeftArmArmor, RightArmArmor, HeadArmor, LeftForearmArmor, RightForearmArmor };
 	for (int32 Index = 0; Index <= MovingPartCount; ++Index)
 	{
 		Structures[Index]->ClearInstances();
@@ -396,25 +440,34 @@ void AMP_Mech::BuildStructureIgnoring(const AActor* Ignored)
 		(bOnHead ? HeadGlass : Glass)->AddInstance(FTransform(FRotator::ZeroRotator, Center, (Pane.Max - Pane.Min) / MechCubeSize));
 	}
 
-	//Moving parts at rest on their pivots, their pieces relative to it. What hangs on a pivot stays where it is when the pivot moves
+	//Moving parts at rest on their pivots (a forearm's on its arm's), their pieces relative to it. What hangs on a pivot stays where it is when
+	//the pivots move: all of it is kept before moving any, a pivot carries the pivots hanging on it
+	TArray<TPair<USceneComponent*, FTransform>> Hanging;
 	for (int32 Index = 0; Index < MovingPartCount; ++Index)
 	{
-		USceneComponent* PivotComponent = GetMovingPivotComponent(Index);
-		FVector PivotLocation = FVector::ZeroVector;
-		GetMovingPivot(Index, PivotLocation);
-		TArray<TPair<USceneComponent*, FTransform>> Hanging;
-		for (USceneComponent* Child : PivotComponent->GetAttachChildren())
+		for (USceneComponent* Child : GetMovingPivotComponent(Index)->GetAttachChildren())
 		{
 			if (Child && Child->GetOwner() != this)
 			{
 				Hanging.Emplace(Child, Child->GetComponentTransform());
 			}
 		}
-		PivotComponent->SetRelativeLocationAndRotation(PivotLocation, FRotator::ZeroRotator);
-		for (const TPair<USceneComponent*, FTransform>& Pair : Hanging)
+	}
+	for (int32 Index = 0; Index < MovingPartCount; ++Index)
+	{
+		FVector PivotLocation = FVector::ZeroVector;
+		GetMovingPivot(Index, PivotLocation);
+		FVector ParentLocation = FVector::ZeroVector;
+		const int32 Parent = GetMovingParent(Index);
+		if (Parent != INDEX_NONE)
 		{
-			Pair.Key->SetWorldTransform(Pair.Value);
+			GetMovingPivot(Parent, ParentLocation);
 		}
+		GetMovingPivotComponent(Index)->SetRelativeLocationAndRotation(PivotLocation - ParentLocation, FRotator::ZeroRotator);
+	}
+	for (const TPair<USceneComponent*, FTransform>& Pair : Hanging)
+	{
+		Pair.Key->SetWorldTransform(Pair.Value);
 	}
 	auto PartSlot = [this](EMP_MechPart Part)
 	{
@@ -821,7 +874,8 @@ void AMP_Mech::ApplyLook()
 	if (Data->Material)
 	{
 		for (UInstancedStaticMeshComponent* Mesh : { Structure.Get(), Armor.Get(), LeftLegStructure.Get(), LeftLegArmor.Get(), RightLegStructure.Get(), RightLegArmor.Get(),
-			LeftArmStructure.Get(), LeftArmArmor.Get(), RightArmStructure.Get(), RightArmArmor.Get(), HeadStructure.Get(), HeadArmor.Get() })
+			LeftArmStructure.Get(), LeftArmArmor.Get(), RightArmStructure.Get(), RightArmArmor.Get(), HeadStructure.Get(), HeadArmor.Get(),
+			LeftForearmStructure.Get(), LeftForearmArmor.Get(), RightForearmStructure.Get(), RightForearmArmor.Get() })
 		{
 			Mesh->SetMaterial(0, Data->Material);
 		}
@@ -835,7 +889,7 @@ void AMP_Mech::ApplyLook()
 
 void AMP_Mech::CarryPhysicsBodies(const FTransform& OldTransform, TConstArrayView<FTransform> OldPivotTransforms)
 {
-	//Each part in the world before and after: 0 the body, then the moving parts (their pivots hang on the root)
+	//Each part in the world before and after: 0 the body, then the moving parts
 	FTransform OldParts[MovingPartCount + 1];
 	FTransform NewParts[MovingPartCount + 1];
 	OldParts[0] = OldTransform;
@@ -843,7 +897,7 @@ void AMP_Mech::CarryPhysicsBodies(const FTransform& OldTransform, TConstArrayVie
 	bool bMoved = !OldParts[0].Equals(NewParts[0], 0.001);
 	for (int32 Index = 0; Index < MovingPartCount; ++Index)
 	{
-		const FTransform Pivot = GetMovingPivotComponent(Index)->GetRelativeTransform();
+		const FTransform Pivot = GetPivotToActor(Index);
 		OldParts[Index + 1] = OldPivotTransforms[Index] * OldTransform;
 		NewParts[Index + 1] = Pivot * NewParts[0];
 		bMoved |= !OldPivotTransforms[Index].Equals(Pivot, 0.0001);
@@ -854,7 +908,8 @@ void AMP_Mech::CarryPhysicsBodies(const FTransform& OldTransform, TConstArrayVie
 	}
 
 	//Within any part's structure (the legs, arms and head have their own)
-	const UInstancedStaticMeshComponent* Structures[MovingPartCount + 1] = { Structure, LeftLegStructure, RightLegStructure, LeftArmStructure, RightArmStructure, HeadStructure };
+	const UInstancedStaticMeshComponent* Structures[MovingPartCount + 1] = { Structure, LeftLegStructure, RightLegStructure, LeftArmStructure, RightArmStructure, HeadStructure,
+		LeftForearmStructure, RightForearmStructure };
 	FBox Bounds(ForceInit);
 	for (const UInstancedStaticMeshComponent* PartStructure : Structures)
 	{
@@ -883,7 +938,7 @@ void AMP_Mech::CarryPhysicsBodies(const FTransform& OldTransform, TConstArrayVie
 		{
 			continue;
 		}
-		const int32 PartIndex = FindPartIndex(Component->GetComponentLocation(), MakeArrayView(OldParts, MovingPartCount + 1), OldPivotTransforms);
+		const int32 PartIndex = FindPartIndex(Component->GetComponentLocation(), MakeArrayView(OldParts, MovingPartCount + 1));
 		if (PartIndex == INDEX_NONE)
 		{
 			continue;
@@ -975,6 +1030,32 @@ void AMP_Mech::UpdatePartShapes()
 		Arm.Pivot = FVector(Bounds.GetCenter().X, Side > 0.0 ? Bounds.Min.Y : Bounds.Max.Y, Bounds.GetCenter().Z);
 		FindPivot(Part, Arm.Pivot);
 		Arm.RestDirection = FVector(0.0, Side, 0.0);
+	}
+
+	//Forearms the same way, on their arm (a forearm without its arm turns alone)
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		const EMP_MechPart Part = Index == 0 ? EMP_MechPart::LeftForearm : EMP_MechPart::RightForearm;
+		FBox Bounds(ForceInit);
+		for (const FMP_MechBox& Box : SolidBlocks)
+		{
+			if (Box.Part == Part)
+			{
+				Bounds += FBox(Box.Min, Box.Max);
+			}
+		}
+
+		FArmShape& Forearm = Forearms[Index];
+		Forearm = FArmShape();
+		if (!Bounds.IsValid)
+		{
+			continue;
+		}
+		Forearm.bValid = true;
+		const double Side = Bounds.GetCenter().Y >= 0.0 ? 1.0 : -1.0;
+		Forearm.Pivot = FVector(Bounds.GetCenter().X, Side > 0.0 ? Bounds.Min.Y : Bounds.Max.Y, Bounds.GetCenter().Z);
+		FindPivot(Part, Forearm.Pivot);
+		Forearm.RestDirection = FVector(0.0, Side, 0.0);
 	}
 
 	//The head turns on the bottom center of its solids, unless a pivot block says otherwise
@@ -1157,19 +1238,23 @@ void AMP_Mech::OnEditorPropertyChanged(UObject* Object, FPropertyChangedEvent& E
 }
 #endif
 
-int32 AMP_Mech::FindPartIndex(const FVector& WorldPoint, TConstArrayView<FTransform> PartTransforms, TConstArrayView<FTransform> PivotTransforms) const
+int32 AMP_Mech::FindPartIndex(const FVector& WorldPoint, TConstArrayView<FTransform> PartTransforms) const
 {
-	//In each part's rest pose: the body's frame, a moving part's frame placed at its pivot
+	//In each part's rest pose: the body's frame, a moving part's frame placed at its pivot (a part without one is built with the body)
 	FVector RestPoints[MovingPartCount + 1];
+	bool bHasPivot[MovingPartCount + 1] = { true };
 	RestPoints[0] = PartTransforms[0].InverseTransformPosition(WorldPoint);
 	for (int32 Index = 0; Index < MovingPartCount; ++Index)
 	{
-		RestPoints[Index + 1] = PivotTransforms[Index].GetLocation() + PartTransforms[Index + 1].InverseTransformPosition(WorldPoint);
+		FVector RestPivot = FVector::ZeroVector;
+		bHasPivot[Index + 1] = GetMovingPivot(Index, RestPivot);
+		RestPoints[Index + 1] = RestPivot + PartTransforms[Index + 1].InverseTransformPosition(WorldPoint);
 	}
 	for (const FMP_MechBox& Block : SolidBlocks)
 	{
-		const int32 PartIndex = Block.Part == EMP_MechPart::Body ? 0 : MovingIndexOf(Block.Part) + 1;
-		if (PartIndex >= 0 && FBox(Block.Min, Block.Max).IsInsideOrOn(RestPoints[PartIndex]))
+		const int32 Moving = MovingIndexOf(Block.Part);
+		const int32 PartIndex = Moving != INDEX_NONE && bHasPivot[Moving + 1] ? Moving + 1 : 0;
+		if (FBox(Block.Min, Block.Max).IsInsideOrOn(RestPoints[PartIndex]))
 		{
 			return PartIndex;
 		}
@@ -1177,17 +1262,26 @@ int32 AMP_Mech::FindPartIndex(const FVector& WorldPoint, TConstArrayView<FTransf
 	return INDEX_NONE;
 }
 
+FTransform AMP_Mech::GetPivotToActor(int32 Index) const
+{
+	return GetMovingPivotComponent(Index)->GetComponentTransform().GetRelativeTransform(GetActorTransform());
+}
+
+int32 AMP_Mech::GetMovingParent(int32 Index)
+{
+	//Forearms (5-6) hang on their arms (2-3)
+	return Index >= 5 ? Index - 3 : INDEX_NONE;
+}
+
 USceneComponent* AMP_Mech::FindPartComponentAt(const FVector& WorldPoint) const
 {
 	FTransform Parts[MovingPartCount + 1];
-	FTransform Pivots[MovingPartCount];
 	Parts[0] = GetActorTransform();
 	for (int32 Index = 0; Index < MovingPartCount; ++Index)
 	{
-		Pivots[Index] = GetMovingPivotComponent(Index)->GetRelativeTransform();
-		Parts[Index + 1] = Pivots[Index] * Parts[0];
+		Parts[Index + 1] = GetMovingPivotComponent(Index)->GetComponentTransform();
 	}
-	const int32 PartIndex = FindPartIndex(WorldPoint, MakeArrayView(Parts, MovingPartCount + 1), MakeArrayView(Pivots, MovingPartCount));
+	const int32 PartIndex = FindPartIndex(WorldPoint, MakeArrayView(Parts, MovingPartCount + 1));
 	if (PartIndex == INDEX_NONE)
 	{
 		return nullptr;
@@ -1265,7 +1359,8 @@ USceneComponent* AMP_Mech::GetPartPivot(EMP_MechPart Part) const
 
 USceneComponent* AMP_Mech::GetMovingPivotComponent(int32 Index) const
 {
-	USceneComponent* const Pivots[MovingPartCount] = { LeftLegPivot.Get(), RightLegPivot.Get(), LeftArmPivot.Get(), RightArmPivot.Get(), HeadPivot.Get() };
+	USceneComponent* const Pivots[MovingPartCount] = { LeftLegPivot.Get(), RightLegPivot.Get(), LeftArmPivot.Get(), RightArmPivot.Get(), HeadPivot.Get(),
+		LeftForearmPivot.Get(), RightForearmPivot.Get() };
 	return Pivots[Index];
 }
 
@@ -1280,7 +1375,7 @@ bool AMP_Mech::GetMovingPivot(int32 Index, FVector& OutPivot) const
 		}
 		return false;
 	}
-	const FArmShape& Shape = Index < 4 ? Arms[Index - 2] : HeadShape;
+	const FArmShape& Shape = Index < 4 ? Arms[Index - 2] : (Index == 4 ? HeadShape : Forearms[Index - 5]);
 	if (Shape.bValid)
 	{
 		OutPivot = Shape.Pivot;
@@ -1343,12 +1438,13 @@ void AMP_Mech::UpdateArms(float DeltaSeconds)
 		{
 			continue;
 		}
-		USceneComponent* Pivot = GetMovingPivotComponent(Index + 2);
-		//The gun in this arm (attached under its pivot)
+		USceneComponent* ArmPivot = GetMovingPivotComponent(Index + 2);
+		USceneComponent* ForearmPivot = Forearms[Index].bValid ? GetMovingPivotComponent(Index + 5) : nullptr;
+		//The gun in this arm (under its pivot, on the forearm too)
 		if (!ArmStations[Index].IsValid() && bSearch)
 		{
 			TArray<USceneComponent*> Hanging;
-			Pivot->GetChildrenComponents(true, Hanging);
+			ArmPivot->GetChildrenComponents(true, Hanging);
 			for (const USceneComponent* Child : Hanging)
 			{
 				if (AMP_WeaponStation* Station = Cast<AMP_WeaponStation>(Child->GetOwner()))
@@ -1359,37 +1455,50 @@ void AMP_Mech::UpdateArms(float DeltaSeconds)
 			}
 		}
 
-		//Toward the aim in the mech's frame: swung forward or back around the vertical, lifted or lowered around the horizontal across it
-		FQuat Target = FQuat::Identity;
+		//The hand is the gun: the arm turns at the elbow and the forearm tilts so the hand points at the target (mech frame), else back to rest
+		float TargetYaw = 0.f;
+		float TargetPitch = 0.f;
 		const AMP_WeaponStation* Station = ArmStations[Index].Get();
 		const bool bManned = Station && Station->GetUser();
 		const bool bAiming = Data->bAimArms && (bManned || bDebugArmAim);
 		if (bAiming)
 		{
-			const FVector Aim = bManned ? FRotator(0.f, -SimYaw, 0.f).RotateVector(Station->GetAimRotation().Vector()) : DebugArmAim.Vector();
-			const FVector Flat = FVector(Aim.X, Aim.Y, 0.f).GetSafeNormal();
-			const double Yaw = Flat.IsNearlyZero() ? 0.0 : FMath::RadiansToDegrees(FMath::Atan2(FVector::CrossProduct(Arm.RestDirection, Flat).Z, FVector::DotProduct(Arm.RestDirection, Flat)));
-			const double Elevation = FMath::RadiansToDegrees(FMath::Asin(FMath::Clamp(Aim.Z, -1.0, 1.0)));
-			const FVector LiftAxis = FVector::CrossProduct(Arm.RestDirection, FVector::UpVector);
-			Target = FQuat(FVector::UpVector, FMath::DegreesToRadians(FMath::Clamp(Yaw, -Data->ArmMaxYaw, Data->ArmMaxYaw)))
-				* FQuat(LiftAxis, FMath::DegreesToRadians(FMath::Clamp(Elevation, -Data->ArmMaxPitchDown, Data->ArmMaxPitchUp)));
+			const FTransform& Mech = GetActorTransform();
+			const FVector Target = bManned ? Station->GetMountTargetPoint() : FVector::ZeroVector;
+			const FVector TurnDirection = bManned ? Mech.InverseTransformVectorNoScale(Target - ArmPivot->GetComponentLocation()) : DebugArmAim.Vector();
+			const FVector TiltDirection = bManned ? Mech.InverseTransformVectorNoScale(Target - (ForearmPivot ? ForearmPivot : ArmPivot)->GetComponentLocation()) : DebugArmAim.Vector();
+
+			const FVector Flat = FVector(TurnDirection.X, TurnDirection.Y, 0.f).GetSafeNormal();
+			double Yaw = ArmYaws[Index];
+			if (!Flat.IsNearlyZero())
+			{
+				Yaw = FMath::RadiansToDegrees(FMath::Atan2(FVector::CrossProduct(Arm.RestDirection, Flat).Z, FVector::DotProduct(Arm.RestDirection, Flat)));
+			}
+			if (FMath::Abs(Yaw) > 180.0 - ArmBehindMargin && Yaw * ArmYaws[Index] < 0.0)
+			{
+				Yaw = -Yaw;
+			}
+			TargetYaw = FMath::Clamp(static_cast<float>(Yaw), -Data->ArmMaxYaw, Data->ArmMaxYaw);
+			const double Elevation = FMath::RadiansToDegrees(FMath::Asin(FMath::Clamp(TiltDirection.GetSafeNormal().Z, -1.0, 1.0)));
+			TargetPitch = FMath::Clamp(static_cast<float>(Elevation), -Data->ArmMaxPitchDown, Data->ArmMaxPitchUp);
 		}
-		//Eased: speeds up and brakes at ArmAcceleration; a still arm holds while its gunner aims within ArmDeadZone of it
-		const float Remaining = FMath::RadiansToDegrees(ArmRotations[Index].AngularDistance(Target));
-		const bool bHold = bAiming && ArmSpeeds[Index] <= 0.f && Remaining < Data->ArmDeadZone;
-		const float WantedSpeed = bHold ? 0.f : FMath::Min(Data->ArmTurnSpeed, FMath::Sqrt(2.f * Data->ArmAcceleration * Remaining));
-		ArmSpeeds[Index] = FMath::FInterpConstantTo(ArmSpeeds[Index], WantedSpeed, DeltaSeconds, Data->ArmAcceleration);
-		const float Step = ArmSpeeds[Index] * DeltaSeconds;
-		if (Step >= Remaining)
+		EaseArmAngle(ArmYaws[Index], ArmYawSpeeds[Index], TargetYaw, bAiming, Data->ArmTurnSpeed, Data->ArmAcceleration, Data->ArmDeadZone, DeltaSeconds);
+		EaseArmAngle(ArmPitches[Index], ArmPitchSpeeds[Index], TargetPitch, bAiming, Data->ArmTurnSpeed, Data->ArmAcceleration, Data->ArmDeadZone, DeltaSeconds);
+
+		//Tilt about the horizontal across the arm, the hand up for a positive pitch
+		const FVector LiftAxis = FVector::CrossProduct(Arm.RestDirection, FVector::UpVector);
+		const FQuat Turn(FVector::UpVector, FMath::DegreesToRadians(ArmYaws[Index]));
+		const FQuat Lift(LiftAxis, FMath::DegreesToRadians(ArmPitches[Index]));
+		if (ForearmPivot)
 		{
-			ArmRotations[Index] = Target;
-			ArmSpeeds[Index] = 0.f;
+			ArmPivot->SetRelativeRotation(Turn);
+			ForearmPivot->SetRelativeRotation(Lift);
 		}
-		else if (Step > 0.f)
+		else
 		{
-			ArmRotations[Index] = FQuat::Slerp(ArmRotations[Index], Target, Step / Remaining);
+			//A one-piece arm turns and lifts at the shoulder
+			ArmPivot->SetRelativeRotation(Turn * Lift);
 		}
-		Pivot->SetRelativeRotation(ArmRotations[Index]);
 	}
 }
 
@@ -1579,7 +1688,7 @@ void AMP_Mech::Tick(float DeltaSeconds)
 	FTransform OldPivots[MovingPartCount];
 	for (int32 Index = 0; Index < MovingPartCount; ++Index)
 	{
-		OldPivots[Index] = GetMovingPivotComponent(Index)->GetRelativeTransform();
+		OldPivots[Index] = GetPivotToActor(Index);
 	}
 
 	//Legs swing from the hips, the body rocks and bobs over them

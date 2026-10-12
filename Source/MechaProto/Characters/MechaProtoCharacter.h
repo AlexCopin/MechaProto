@@ -184,6 +184,10 @@ protected:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoSlideEnd();
 
+	//Tests: walks forward holding the slide input for Seconds, logging the heads and the camera each frame (console: ke * DebugSlide 2)
+	UFUNCTION(BlueprintCallable, Category="Movement")
+	void DebugSlide(float Seconds);
+
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoRunStart();
 
@@ -221,10 +225,17 @@ protected:
 	//Back aboard (UC_PlayerRecovery) instead of being destroyed
 	virtual void FellOutOfWorld(const UDamageType& DamageType) override;
 
-	//Lowers the first person view while sliding (owner only)
-	void UpdateSlideCamera(float DeltaSeconds);
-	FVector FirstPersonMeshBaseLocation = FVector::ZeroVector;
-	float SlideCameraOffset = 0.f;
+	//While the slide plays (and its stand-up), the camera rides the body's head and the owner sees the body (owner only)
+	void UpdateSlideView(float DeltaSeconds);
+	bool IsSlideViewWanted() const;
+	//Up from the body's head to SlideCameraMinHeight above the feet, in the slide view (world)
+	FVector GetSlideViewLift() const;
+	bool bSlideViewApplied = false;
+	//The camera's jump between the two heads, smoothed out (world)
+	FVector SlideViewBlendOffset = FVector::ZeroVector;
+	//Body bone hidden from the owner during the slide view (and its children)
+	FName SlideHiddenBone = NAME_None;
+	FVector CameraBaseLocation = FVector::ZeroVector;
 
 	//Enter / loop / exit animations, every machine follows the replicated slide state
 	void UpdateSlideAnimation();
@@ -243,6 +254,9 @@ protected:
 
 	//The first person camera's field of view from DA_Movement (owner only)
 	void UpdateFieldOfView();
+
+	float DebugSlideTimeLeft = 0.f;
+	void TickDebugSlide(float DeltaSeconds);
 
 	//Turns the view to face the ladder when grabbing it (owner only)
 	void UpdateLadderCamera(float DeltaSeconds);

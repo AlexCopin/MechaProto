@@ -1,4 +1,5 @@
 #include "C_CharacterMovement.h"
+#include "MechaProto.h"
 #include "PDA_Movement.h"
 #include "C_PlayerStats.h"
 #include "MP_Ladder.h"
@@ -19,6 +20,7 @@ void UC_CharacterMovement::FSavedMove_Mecha::Clear()
 	bSavedWantsToSlide = 0;
 	bSavedWantsToRun = 0;
 	bSavedRunExhausted = 0;
+	bSavedSlideNeedsRelease = 0;
 	SavedStamina = 0.f;
 	SavedStaminaRegenDelayLeft = 0.f;
 }
@@ -56,6 +58,7 @@ void UC_CharacterMovement::FSavedMove_Mecha::SetMoveFor(ACharacter* C, float InD
 		bSavedWantsToSlide = Movement->bWantsToSlide;
 		bSavedWantsToRun = Movement->bWantsToRun;
 		bSavedRunExhausted = Movement->bRunExhausted;
+		bSavedSlideNeedsRelease = Movement->bSlideNeedsRelease;
 		SavedStamina = Movement->Stamina;
 		SavedStaminaRegenDelayLeft = Movement->StaminaRegenDelayLeft;
 	}
@@ -71,6 +74,7 @@ void UC_CharacterMovement::FSavedMove_Mecha::PrepMoveFor(ACharacter* C)
 		Movement->bWantsToRun = bSavedWantsToRun;
 		//Replays start from the stamina this move started with
 		Movement->bRunExhausted = bSavedRunExhausted;
+		Movement->bSlideNeedsRelease = bSavedSlideNeedsRelease;
 		Movement->Stamina = SavedStamina;
 		Movement->StaminaRegenDelayLeft = SavedStaminaRegenDelayLeft;
 	}
@@ -85,6 +89,7 @@ void UC_CharacterMovement::FSavedMove_Mecha::CombineWith(const FSavedMove_Charac
 	if (UC_CharacterMovement* Movement = Cast<UC_CharacterMovement>(InCharacter->GetCharacterMovement()))
 	{
 		Movement->bRunExhausted = Old->bSavedRunExhausted;
+		Movement->bSlideNeedsRelease = Old->bSavedSlideNeedsRelease;
 		Movement->Stamina = Old->SavedStamina;
 		Movement->StaminaRegenDelayLeft = Old->SavedStaminaRegenDelayLeft;
 	}
@@ -299,13 +304,20 @@ void UC_CharacterMovement::UpdateCharacterStateBeforeMovement(float DeltaSeconds
 		}
 	}
 
+	//One slide per press: holding the input after a slide doesn't start another
+	if (!bWantsToSlide)
+	{
+		bSlideNeedsRelease = false;
+	}
+
 	//On a ladder the slide input slides down instead, see PhysLadder
-	if (bWantsToSlide && MovementMode == MOVE_Walking && CanStartSlide())
+	if (bWantsToSlide && !bSlideNeedsRelease && MovementMode == MOVE_Walking && CanStartSlide())
 	{
 		EnterSlide();
 	}
 	else if (!bWantsToSlide && IsSliding())
 	{
+		UE_LOG(LogMechaProto, Verbose, TEXT("%s slide end: input released"), *GetNameSafe(CharacterOwner));
 		SetMovementMode(MOVE_Walking);
 	}
 
@@ -371,8 +383,10 @@ void UC_CharacterMovement::EnterSlide()
 	const UPDA_Movement* Data = GetMovementData();
 	SetCrouchedHalfHeight(Data->SlideHalfHeight);
 	bWantsToCrouch = true;
+	bSlideNeedsRelease = true;
 	Velocity += Velocity.GetSafeNormal2D() * Data->SlideEnterImpulse;
 	SetMovementMode(MOVE_Custom, static_cast<uint8>(ECustomMovementMode::Slide));
+	UE_LOG(LogMechaProto, Verbose, TEXT("%s slide start: speed %.0f"), *GetNameSafe(CharacterOwner), Velocity.Size2D());
 }
 
 void UC_CharacterMovement::PhysSlide(float DeltaTime, int32 Iterations)
@@ -387,6 +401,7 @@ void UC_CharacterMovement::PhysSlide(float DeltaTime, int32 Iterations)
 	FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, false);
 	if (!CurrentFloor.IsWalkableFloor())
 	{
+		UE_LOG(LogMechaProto, Verbose, TEXT("%s slide end: no floor"), *GetNameSafe(CharacterOwner));
 		SetMovementMode(MOVE_Falling);
 		StartNewPhysics(DeltaTime, Iterations);
 		return;
@@ -409,6 +424,7 @@ void UC_CharacterMovement::PhysSlide(float DeltaTime, int32 Iterations)
 	Speed = FMath::Min(FMath::Max(Speed - Data->SlideFriction * DeltaTime, 0.f), Data->SlideMaxSpeed);
 	if (Speed < Data->SlideMinSpeed)
 	{
+		UE_LOG(LogMechaProto, Verbose, TEXT("%s slide end: speed %.0f"), *GetNameSafe(CharacterOwner), Speed);
 		SetMovementMode(MOVE_Walking);
 		StartNewPhysics(DeltaTime, Iterations);
 		return;

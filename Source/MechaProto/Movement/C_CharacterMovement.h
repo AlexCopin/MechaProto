@@ -30,8 +30,9 @@ class MECHAPROTO_API UC_CharacterMovement : public UCharacterMovementComponent
 		uint8 bSavedWantsToSlide : 1;
 		uint8 bSavedWantsToRun : 1;
 
-		//Run state at the start of the move, put back for replays and combined moves
+		//Run and slide state at the start of the move, put back for replays and combined moves
 		uint8 bSavedRunExhausted : 1;
+		uint8 bSavedSlideNeedsRelease : 1;
 		float SavedStamina = 0.f;
 		float SavedStaminaRegenDelayLeft = 0.f;
 
@@ -71,6 +72,8 @@ public:
 
 	//Simulated here on the server and the owning client only, the others read UC_PlayerStats
 	bool IsStaminaSimulated() const;
+	//A slide started with the input still held: released before the next one
+	bool NeedsSlideRelease() const { return bSlideNeedsRelease; }
 	float GetStamina() const { return FMath::Max(Stamina, 0.f); }
 
 	UFUNCTION(BlueprintPure, Category = "Ladder")
@@ -136,6 +139,9 @@ protected:
 	//Input state, replayed by the saved moves
 	bool bWantsToSlide = false;
 	bool bWantsToRun = false;
+
+	//A slide started with the input still held: no other until it is released (holding it chained slides, each with its boost)
+	bool bSlideNeedsRelease = false;
 
 	//Run state, simulated the same way by the owning client and the server; the server copies the stamina to UC_PlayerStats
 	bool bIsRunning = false;

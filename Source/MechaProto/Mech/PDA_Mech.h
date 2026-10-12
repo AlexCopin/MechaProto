@@ -72,31 +72,33 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gait", meta = (ClampMin = "0.1", UIMax = "10"))
 	float GaitBlendSpeed = 2.f;
 
-	//-----Arms: each one swings from its shoulder toward where its gunner aims (the gun on the fist aims exactly), back to rest without one
+	//-----Arms: the hand is the gun. Each arm turns at the elbow and its forearm tilts so the hand points where its gunner aims (shots go
+	//along the forearm), back to rest without one. The upper arm doesn't move
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms")
 	bool bAimArms = true;
 
-	//Forward and back from their rest, straight out to the side
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "0", ClampMax = "90", Units = "Degrees"))
-	float ArmMaxYaw = 35.f;
+	//Forward and back from their rest, straight out to the side (90 = the whole side)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "0", ClampMax = "100", Units = "Degrees"))
+	float ArmMaxYaw = 90.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "0", ClampMax = "80", Units = "Degrees"))
-	float ArmMaxPitchUp = 20.f;
+	float ArmMaxPitchUp = 10.f;
 
+	//The hand rooms tilt as much (walkable up to ~44)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "0", ClampMax = "80", Units = "Degrees"))
-	float ArmMaxPitchDown = 30.f;
+	float ArmMaxPitchDown = 40.f;
 
-	//Heavy and slow (players walk inside): top speed, reached and left at ArmAcceleration
+	//Top speed of the turn and the tilt, reached and left at ArmAcceleration
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "1", UIMax = "180", Units = "DegreesPerSecond"))
-	float ArmTurnSpeed = 10.f;
+	float ArmTurnSpeed = 18.f;
 
 	//Deg/s per second: the arm speeds up and brakes smoothly instead of starting and stopping at once
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "1", UIMax = "180"))
-	float ArmAcceleration = 8.f;
+	float ArmAcceleration = 12.f;
 
-	//A still arm waits until its gunner aims farther than this from it (the gun on the fist still aims exactly), so small aim changes don't rock its corridor
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "0", UIMax = "45", Units = "Degrees"))
-	float ArmDeadZone = 10.f;
+	//A still arm waits until the aim is farther than this from it, so tiny aim changes don't rock the hand room (shots miss by as much)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arms", meta = (ClampMin = "0", UIMax = "20", Units = "Degrees"))
+	float ArmDeadZone = 1.5f;
 
 	//-----Head: turns on the neck toward where the lookout aims (its searchlight in front), back to facing forward without one
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Head")

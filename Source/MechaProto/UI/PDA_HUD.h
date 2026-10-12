@@ -91,6 +91,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crosshair|Cooldown")
 	FLinearColor CooldownBackColor = FLinearColor(0.f, 0.f, 0.f, 0.35f);
 
+	//-----A gun that can't turn by itself (the mech's hands): a ring where its shots would land, while it isn't on the crosshair yet
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crosshair|Gun")
+	bool bShowGunMarker = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crosshair|Gun", meta = (ClampMin = "1", UIMax = "100"))
+	float GunMarkerRadius = 12.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crosshair|Gun", meta = (ClampMin = "1", UIMax = "10"))
+	float GunMarkerThickness = 2.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crosshair|Gun")
+	FLinearColor GunMarkerColor = FLinearColor(1.f, 0.35f, 0.1f, 0.9f);
+
+	//Not drawn closer than this to the center (the hand is on target)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crosshair|Gun", meta = (ClampMin = "0", UIMax = "100"))
+	float GunMarkerMinOffset = 8.f;
+
 	//-----Station disabled by a broken system: the crosshair takes this color and the text below names it ({0})
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Crosshair|Disabled")
 	FLinearColor DisabledColor = FLinearColor(1.f, 0.15f, 0.1f, 0.95f);

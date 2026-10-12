@@ -338,7 +338,7 @@ void AMechaProtoCharacter::OnStationChanged(AMP_Station* Station)
 
 void AMechaProtoCharacter::UpdateBodyView()
 {
-	const bool bShowBody = IsRagdolled() || IsManningStation();
+	const bool bShowBody = IsRagdolled() || IsManningStation() || bSlideViewApplied;
 	if (bShowBody == bBodyViewApplied)
 	{
 		return;
@@ -421,7 +421,7 @@ void AMechaProtoCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	FirstPersonMeshBaseLocation = FirstPersonMesh->GetRelativeLocation();
+	CameraBaseLocation = FirstPersonCameraComponent->GetRelativeLocation();
 }
 
 void AMechaProtoCharacter::Tick(float DeltaSeconds)
@@ -433,10 +433,32 @@ void AMechaProtoCharacter::Tick(float DeltaSeconds)
 
 	if (IsLocallyControlled())
 	{
-		UpdateSlideCamera(DeltaSeconds);
+		UpdateSlideView(DeltaSeconds);
 		UpdateLadderCamera(DeltaSeconds);
 		UpdateFieldOfView();
+		TickDebugSlide(DeltaSeconds);
 	}
+}
+
+void AMechaProtoCharacter::DebugSlide(float Seconds)
+{
+	//Upright (BugItGo also pitches the capsule, which then never lands); the view keeps its pitch
+	SetActorRotation(FRotator(0.f, GetActorRotation().Yaw, 0.f));
+	DebugSlideTimeLeft = Seconds;
+}
+
+void AMechaProtoCharacter::TickDebugSlide(float DeltaSeconds)
+{
+	UC_CharacterMovement* Movement = GetMechaMovement();
+	if (DebugSlideTimeLeft <= 0.f || !Movement)
+	{
+		return;
+	}
+	DebugSlideTimeLeft -= DeltaSeconds;
+	AddMovementInput(FRotator(0.f, GetActorRotation().Yaw, 0.f).Vector(), 1.f);
+	Movement->SetWantsToSlide(DebugSlideTimeLeft > 0.f);
+	UE_LOG(LogMechaProto, Log, TEXT("DebugSlide mode %d/%d release %d sliding %d speed %.0f capsule %.0f body head %.0f view head %.0f camera %.0f"), Movement->MovementMode.GetValue(), Movement->CustomMovementMode, Movement->NeedsSlideRelease(), IsSliding(), GetVelocity().Size2D(),
+		GetActorLocation().Z, GetMesh()->GetSocketLocation(FName("head")).Z, FirstPersonMesh->GetSocketLocation(FName("head")).Z, FirstPersonCameraComponent->GetComponentLocation().Z);
 }
 
 void AMechaProtoCharacter::FellOutOfWorld(const UDamageType& DamageType)
@@ -549,7 +571,23 @@ void AMechaProtoCharacter::PlaySlideLoop()
 	}
 }
 
-void AMechaProtoCharacter::UpdateSlideCamera(float DeltaSeconds)
+bool AMechaProtoCharacter::IsSlideViewWanted() const
+{
+	const UC_CharacterMovement* Movement = GetMechaMovement();
+	if (!Movement || !Movement->GetMovementData()->bSlideCameraFollowsHead || IsRagdolled() || IsManningStation())
+	{
+		return false;
+	}
+	if (Movement->IsSliding())
+	{
+		return true;
+	}
+	//Standing up after it
+	const UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	return AnimInstance && SlideExitMontage.IsValid() && AnimInstance->Montage_IsPlaying(SlideExitMontage.Get());
+}
+
+void AMechaProtoCharacter::UpdateSlideView(float DeltaSeconds)
 {
 	const UC_CharacterMovement* Movement = GetMechaMovement();
 	if (!Movement)
@@ -557,15 +595,61 @@ void AMechaProtoCharacter::UpdateSlideCamera(float DeltaSeconds)
 		return;
 	}
 
-	//The body has no slide pose, so the first person arms and camera are moved down instead
-	const UPDA_Movement* Data = Movement->GetMovementData();
-	const float TargetOffset = Movement->IsSliding() ? -Data->SlideCameraDrop : 0.f;
-	if (FMath::IsNearlyEqual(SlideCameraOffset, TargetOffset, 0.1f))
+	//The first person mesh's rig keeps its head (and the camera) at standing height: in the slide the camera goes on the body's head instead
+	const bool bWanted = IsSlideViewWanted();
+	if (bWanted != bSlideViewApplied)
+	{
+		const FVector Before = FirstPersonCameraComponent->GetComponentLocation();
+		bSlideViewApplied = bWanted;
+		USkeletalMeshComponent* HeadMesh = bWanted ? GetMesh() : FirstPersonMesh;
+		FirstPersonCameraComponent->AttachToComponent(HeadMesh, FAttachmentTransformRules::KeepRelativeTransform, FName("head"));
+		FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation);
+		SlideViewBlendOffset = Before - (FirstPersonCameraComponent->GetComponentLocation() + GetSlideViewLift());
+
+		//Only the hips and legs: the rest would be around the camera (rendering only, the head bone still carries the camera)
+		if (bWanted)
+		{
+			SlideHiddenBone = Movement->GetMovementData()->SlideHiddenBone;
+			if (!SlideHiddenBone.IsNone())
+			{
+				GetMesh()->HideBoneByName(SlideHiddenBone, PBO_None);
+			}
+		}
+		else if (!SlideHiddenBone.IsNone())
+		{
+			GetMesh()->UnHideBoneByName(SlideHiddenBone);
+			SlideHiddenBone = NAME_None;
+		}
+		UpdateBodyView();
+	}
+
+	//The jump between the two heads is smoothed out, the floor clearance kept
+	SlideViewBlendOffset = FMath::VInterpTo(SlideViewBlendOffset, FVector::ZeroVector, DeltaSeconds, Movement->GetMovementData()->SlideCameraBlendSpeed);
+	if (SlideViewBlendOffset.IsNearlyZero(0.1))
+	{
+		SlideViewBlendOffset = FVector::ZeroVector;
+	}
+	const FVector Offset = SlideViewBlendOffset + GetSlideViewLift();
+	if (Offset.IsZero() && FirstPersonCameraComponent->GetRelativeLocation().Equals(CameraBaseLocation))
 	{
 		return;
 	}
-	SlideCameraOffset = FMath::FInterpTo(SlideCameraOffset, TargetOffset, DeltaSeconds, Data->SlideCameraInterpSpeed);
-	FirstPersonMesh->SetRelativeLocation(FirstPersonMeshBaseLocation + FVector(0.f, 0.f, SlideCameraOffset));
+	const FTransform Head = FirstPersonCameraComponent->GetAttachParent()->GetSocketTransform(FirstPersonCameraComponent->GetAttachSocketName());
+	FirstPersonCameraComponent->SetRelativeLocation(CameraBaseLocation + Head.InverseTransformVectorNoScale(Offset));
+}
+
+FVector AMechaProtoCharacter::GetSlideViewLift() const
+{
+	const UC_CharacterMovement* Movement = GetMechaMovement();
+	const float MinHeight = Movement ? Movement->GetMovementData()->SlideCameraMinHeight : 0.f;
+	if (!bSlideViewApplied || MinHeight <= 0.f)
+	{
+		return FVector::ZeroVector;
+	}
+	const FTransform Head = FirstPersonCameraComponent->GetAttachParent()->GetSocketTransform(FirstPersonCameraComponent->GetAttachSocketName());
+	const double HeadCameraZ = Head.TransformPosition(CameraBaseLocation).Z;
+	const double FeetZ = GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	return FVector(0.0, 0.0, FMath::Max(0.0, FeetZ + MinHeight - HeadCameraZ));
 }
 
 void AMechaProtoCharacter::UpdateLadderCamera(float DeltaSeconds)

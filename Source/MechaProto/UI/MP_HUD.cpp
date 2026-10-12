@@ -162,6 +162,10 @@ void AMP_HUD::DrawCrosshair()
 
 	//Reloading: the ring fills up until the next shot
 	const AMP_WeaponStation* Weapon = Cast<AMP_WeaponStation>(Station);
+	if (Weapon && Weapon->IsFixedGun() && Data->bShowGunMarker)
+	{
+		DrawGunMarker(*Weapon, Center, Scale);
+	}
 	if (Weapon && !Broken && Weapon->GetStationData()->FireCooldown >= Data->CooldownMinToShow)
 	{
 		const float Ready = StationUser->GetFireReadyPercent();
@@ -169,6 +173,37 @@ void AMP_HUD::DrawCrosshair()
 		{
 			DrawCooldownRing(Center, Scale, Ready);
 		}
+	}
+}
+
+void AMP_HUD::DrawGunMarker(const AMP_WeaponStation& Weapon, const FVector2D& Center, float Scale)
+{
+	//In front of the view only
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	PlayerOwner->GetPlayerViewPoint(ViewLocation, ViewRotation);
+	const FVector Point = Weapon.ComputeMuzzleAimPoint();
+	if (FVector::DotProduct(Point - ViewLocation, ViewRotation.Vector()) <= 0.f)
+	{
+		return;
+	}
+	const FVector Projected = Project(Point);
+	const FVector2D Marker(Projected.X, Projected.Y);
+	const UPDA_HUD* Data = GetHUDData();
+	if (FVector2D::Distance(Marker, Center) < Data->GunMarkerMinOffset * Scale)
+	{
+		return;
+	}
+
+	const float Radius = Data->GunMarkerRadius * Scale;
+	const float Thickness = FMath::Max(1.f, Data->GunMarkerThickness * Scale);
+	for (int32 Index = 0; Index < CooldownRingSegments; ++Index)
+	{
+		const float StartAngle = UE_TWO_PI * Index / CooldownRingSegments;
+		const float EndAngle = UE_TWO_PI * (Index + 1) / CooldownRingSegments;
+		const FVector2D Start = Marker + FVector2D(FMath::Sin(StartAngle), -FMath::Cos(StartAngle)) * Radius;
+		const FVector2D End = Marker + FVector2D(FMath::Sin(EndAngle), -FMath::Cos(EndAngle)) * Radius;
+		DrawLine(Start.X, Start.Y, End.X, End.Y, Data->GunMarkerColor, Thickness);
 	}
 }
 

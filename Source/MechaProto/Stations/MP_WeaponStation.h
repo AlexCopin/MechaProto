@@ -27,6 +27,18 @@ public:
 	//Where the gun points (world): the user's aim, smoothed from the replicated one on the other machines
 	FRotator GetAimRotation() const { return TurretAim; }
 
+	//What the user aims at (world): local for the user, replicated for the others
+	FVector GetAimPoint() const;
+
+	//Where whatever carries a fixed gun must point it (the mech's arm): the aim point, raised by a falling projectile's drop
+	FVector GetMountTargetPoint() const;
+
+	//The gun is fixed to what carries it: it fires along its mount, which aims it
+	bool IsFixedGun() const { return bFixedGun; }
+
+	//Where its shots would land now, straight along the muzzle (local)
+	FVector ComputeMuzzleAimPoint() const;
+
 	UFUNCTION(BlueprintPure, Category = "Station")
 	const UPDA_WeaponStation* GetStationData() const;
 
@@ -79,12 +91,30 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Station")
 	bool bSeatOnTurret = true;
 
+	//The gun can't turn: it points along the station's forward (+X) and what carries it aims it (the mech's arm, the hand is the gun).
+	//Shots go where it points
+	UPROPERTY(EditAnywhere, Category = "Station")
+	bool bFixedGun = false;
+
+	//Size of the turret and what it carries (gun, muzzle)
+	UPROPERTY(EditAnywhere, Category = "Station", meta = (ClampMin = "0.1", UIMax = "5"))
+	float TurretScale = 1.f;
+
 	//Turret, seat and base placement from TurretOffset / bSeatOnTurret
 	void ApplyMount();
 
 	//Turret aim for the other players
 	UPROPERTY(Replicated)
 	FRotator ReplicatedAim = FRotator::ZeroRotator;
+
+	//Aim point for the other players (what a fixed gun's mount points at)
+	UPROPERTY(Replicated)
+	FVector_NetQuantize ReplicatedAimPoint = FVector::ZeroVector;
+
+	FVector UserAimPoint = FVector::ZeroVector;
+
+	//Aimed above a point by a falling projectile's drop over the flight from From
+	FVector GetGravityTarget(const FVector& From, const FVector& AimPoint) const;
 
 	//Shots fired, the other players play the fire effects when it changes (several shots between two updates play once)
 	UPROPERTY(ReplicatedUsing = OnRep_FireCounter)

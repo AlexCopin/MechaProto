@@ -48,6 +48,7 @@ void AMP_WeaponStation::PostInitializeComponents()
 void AMP_WeaponStation::ApplyMount()
 {
 	TurretYaw->SetRelativeLocation(TurretOffset);
+	TurretPitch->SetRelativeScale3D(FVector(TurretScale));
 	if (bSeatOnTurret)
 	{
 		return;
@@ -74,6 +75,7 @@ void AMP_WeaponStation::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AMP_WeaponStation, ReplicatedAim);
+	DOREPLIFETIME(AMP_WeaponStation, ReplicatedAimPoint);
 	DOREPLIFETIME(AMP_WeaponStation, FireCounter);
 }
 
@@ -117,17 +119,60 @@ FVector AMP_WeaponStation::ComputeAimPoint() const
 
 void AMP_WeaponStation::AimAt(const FVector& AimPoint)
 {
+	UserAimPoint = AimPoint;
 	TurretAim = (AimPoint - TurretPitch->GetComponentLocation()).Rotation();
 	ApplyTurretRotation(TurretAim);
 
 	if (HasAuthority())
 	{
 		ReplicatedAim = TurretAim;
+		ReplicatedAimPoint = AimPoint;
 	}
+}
+
+FVector AMP_WeaponStation::GetAimPoint() const
+{
+	return IsLocallyUsed() ? UserAimPoint : FVector(ReplicatedAimPoint);
+}
+
+FVector AMP_WeaponStation::GetMountTargetPoint() const
+{
+	return GetGravityTarget(Muzzle->GetComponentLocation(), GetAimPoint());
+}
+
+FVector AMP_WeaponStation::GetGravityTarget(const FVector& From, const FVector& AimPoint) const
+{
+	//A falling projectile is aimed above the point by its drop over the flight, so it lands where the crosshair is
+	const UPDA_WeaponStation* Data = GetStationData();
+	FVector Target = AimPoint;
+	const float Gravity = -GetWorld()->GetGravityZ() * Data->ProjectileGravityScale;
+	for (int32 Pass = 0; Pass < 2 && Gravity > 0.f; ++Pass)
+	{
+		const float FlightTime = FVector::Dist(From, Target) / Data->ProjectileSpeed;
+		Target = AimPoint + FVector(0.f, 0.f, 0.5f * Gravity * FMath::Square(FlightTime));
+	}
+	return Target;
+}
+
+FVector AMP_WeaponStation::ComputeMuzzleAimPoint() const
+{
+	const FVector Start = Muzzle->GetComponentLocation();
+	const FVector End = Start + Muzzle->GetForwardVector() * GetStationData()->AimDistance;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(MuzzleAim), false, this);
+	Params.AddIgnoredActor(User);
+	FHitResult Hit;
+	return GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Projectile, Params) ? Hit.ImpactPoint : End;
 }
 
 void AMP_WeaponStation::ApplyTurretRotation(const FRotator& WorldAim)
 {
+	//A fixed gun points along the station, its mount aims it
+	if (bFixedGun)
+	{
+		TurretYaw->SetRelativeRotation(FRotator::ZeroRotator);
+		TurretPitch->SetRelativeRotation(FRotator::ZeroRotator);
+		return;
+	}
 	TurretYaw->SetWorldRotation(FRotator(0.f, WorldAim.Yaw, 0.f));
 	TurretPitch->SetRelativeRotation(FRotator(WorldAim.Pitch, 0.f, 0.f));
 }
@@ -156,15 +201,8 @@ void AMP_WeaponStation::ServerFire(const FVector& AimPoint)
 	AimAt(AimPoint);
 	const FVector MuzzleLocation = Muzzle->GetComponentLocation();
 
-	//A falling projectile is aimed above the point by its drop over the flight, so it lands where the crosshair is
-	FVector Target = AimPoint;
-	const float Gravity = -GetWorld()->GetGravityZ() * Data->ProjectileGravityScale;
-	for (int32 Pass = 0; Pass < 2 && Gravity > 0.f; ++Pass)
-	{
-		const float FlightTime = FVector::Dist(MuzzleLocation, Target) / Data->ProjectileSpeed;
-		Target = AimPoint + FVector(0.f, 0.f, 0.5f * Gravity * FMath::Square(FlightTime));
-	}
-	FVector Direction = (Target - MuzzleLocation).GetSafeNormal();
+	//A fixed gun shoots where it points (its mount turns toward the aim), a turret at the aim point
+	FVector Direction = bFixedGun ? Muzzle->GetForwardVector() : (GetGravityTarget(MuzzleLocation, AimPoint) - MuzzleLocation).GetSafeNormal();
 	if (Direction.IsNearlyZero() || FVector::DotProduct(Direction, Muzzle->GetForwardVector()) < 0.f)
 	{
 		Direction = Muzzle->GetForwardVector();

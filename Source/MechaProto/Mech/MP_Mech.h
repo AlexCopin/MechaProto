@@ -20,7 +20,10 @@ enum class EMP_MechPart : uint8
 	RightLeg,
 	LeftArm,
 	RightArm,
-	Head
+	Head,
+	//Hangs on its arm (the elbow), tilts up and down: the arm only turns
+	LeftForearm,
+	RightForearm
 };
 
 //Where a moving part turns (a Pivot block): a leg's hip, an arm's shoulder
@@ -286,6 +289,25 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<UInstancedStaticMeshComponent> RightArmArmor;
 
+	//The forearms: a pivot on each arm's pivot (the elbow), tilting the forearm and hand (the gun) up and down
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<USceneComponent> LeftForearmPivot;
+
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UInstancedStaticMeshComponent> LeftForearmStructure;
+
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UInstancedStaticMeshComponent> LeftForearmArmor;
+
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<USceneComponent> RightForearmPivot;
+
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UInstancedStaticMeshComponent> RightForearmStructure;
+
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UInstancedStaticMeshComponent> RightForearmArmor;
+
 	//The head: a pivot on the neck, turned toward the lookout's aim, with the head's structure, armor and glass band
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<USceneComponent> HeadPivot;
@@ -360,13 +382,17 @@ protected:
 		FVector RestDirection = FVector::YAxisVector;
 	};
 	FArmShape Arms[2];
+	//Each forearm: its pivot on the arm (the tilt axis), same rest direction
+	FArmShape Forearms[2];
 	//The head's pivot (RestDirection unused)
 	FArmShape HeadShape;
 	float HeadYaw = 0.f;
 	TWeakObjectPtr<AMP_LookoutStation> HeadStation;
-	FQuat ArmRotations[2] = { FQuat::Identity, FQuat::Identity };
-	//Current swing speed of each arm, deg/s
-	float ArmSpeeds[2] = { 0.f, 0.f };
+	//Each arm's turn from its rest and its forearm's tilt (the whole arm's lift without a forearm), deg, with their current speeds
+	float ArmYaws[2] = { 0.f, 0.f };
+	float ArmPitches[2] = { 0.f, 0.f };
+	float ArmYawSpeeds[2] = { 0.f, 0.f };
+	float ArmPitchSpeeds[2] = { 0.f, 0.f };
 	//The weapon station in each arm, whose aim the arm follows
 	TWeakObjectPtr<AMP_WeaponStation> ArmStations[2];
 	float ArmSearchTimer = 0.f;
@@ -374,10 +400,12 @@ protected:
 	FRotator DebugArmAim = FRotator::ZeroRotator;
 
 	void UpdatePartShapes();
-	//Moving parts after the body: 0-1 legs, 2-3 arms, 4 head
+	//Moving parts after the body: 0-1 legs, 2-3 arms, 4 head, 5-6 forearms
 	bool GetMovingPivot(int32 Index, FVector& OutPivot) const;
 	USceneComponent* GetMovingPivotComponent(int32 Index) const;
-	//Each arm swings toward its gun's aim, within DA_Mech's Arms limits
+	//The moving part a pivot hangs on (a forearm's arm), INDEX_NONE for the root
+	static int32 GetMovingParent(int32 Index);
+	//Each arm turns at the elbow and its forearm tilts so the hand (the gun) points at its gunner's target, within DA_Mech's Arms limits
 	void UpdateArms(float DeltaSeconds);
 	//The head turns toward the lookout's aim
 	void UpdateHead(float DeltaSeconds);
@@ -416,12 +444,14 @@ protected:
 
 	void ApplyLook();
 	void ShowDebug() const;
-	//Moves the loose physics bodies inside by the last move of the part holding them (body, legs, arms, head)
-	//OldPivotTransforms: each moving part's pivot relative to the root before the move
+	//Moves the loose physics bodies inside by the last move of the part holding them (body, legs, arms, forearms, head)
+	//OldPivotTransforms: each moving part's pivot relative to the actor before the move (through its parent pivots)
 	void CarryPhysicsBodies(const FTransform& OldTransform, TConstArrayView<FTransform> OldPivotTransforms);
 	//The part whose solids hold a world point (0 body, 1+ moving parts), INDEX_NONE outside, tested in its rest pose
-	//PartTransforms: each part in the world (body first), PivotTransforms: each moving part's pivot relative to the root
-	int32 FindPartIndex(const FVector& WorldPoint, TConstArrayView<FTransform> PartTransforms, TConstArrayView<FTransform> PivotTransforms) const;
+	//PartTransforms: each part in the world (body first)
+	int32 FindPartIndex(const FVector& WorldPoint, TConstArrayView<FTransform> PartTransforms) const;
+	//A moving pivot relative to the actor, through the pivots it hangs on
+	FTransform GetPivotToActor(int32 Index) const;
 
 	//Simulation, every machine
 	FVector SimLocation = FVector::ZeroVector;
